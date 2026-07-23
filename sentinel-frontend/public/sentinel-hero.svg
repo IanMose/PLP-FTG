@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <!-- Background grid pattern -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#059669" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6ee7b7" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="600" height="600" fill="#0a0a0a"/>
+  <rect width="600" height="600" fill="url(#grid)"/>
+
+  <!-- Data flow lines (connections between nodes) -->
+  <g opacity="0.4" stroke="#10b981" stroke-width="1.5">
+    <line x1="150" y1="180" x2="300" y2="300"/>
+    <line x1="450" y1="180" x2="300" y2="300"/>
+    <line x1="120" y1="350" x2="300" y2="300"/>
+    <line x1="480" y1="350" x2="300" y2="300"/>
+    <line x1="180" y1="480" x2="300" y2="300"/>
+    <line x1="420" y1="480" x2="300" y2="300"/>
+    <!-- Outer connections -->
+    <line x1="150" y1="180" x2="120" y2="350" stroke-dasharray="4 4"/>
+    <line x1="450" y1="180" x2="480" y2="350" stroke-dasharray="4 4"/>
+    <line x1="120" y1="350" x2="180" y2="480" stroke-dasharray="4 4"/>
+    <line x1="480" y1="350" x2="420" y2="480" stroke-dasharray="4 4"/>
+  </g>
+
+  <!-- Outer ring / orbit -->
+  <circle cx="300" cy="300" r="180" fill="none" stroke="#10b981" stroke-width="0.5" opacity="0.3"/>
+  <circle cx="300" cy="300" r="130" fill="none" stroke="#10b981" stroke-width="0.5" opacity="0.2" stroke-dasharray="8 4"/>
+
+  <!-- Data nodes (sites) -->
+  <g filter="url(#glow)">
+    <!-- Node 1 - Critical (red) -->
+    <circle cx="150" cy="180" r="12" fill="#ef4444" opacity="0.8"/>
+    <circle cx="150" cy="180" r="6" fill="#fca5a5"/>
+
+    <!-- Node 2 - High (orange) -->
+    <circle cx="450" cy="180" r="12" fill="#f97316" opacity="0.8"/>
+    <circle cx="450" cy="180" r="6" fill="#fdba74"/>
+
+    <!-- Node 3 - Medium (yellow) -->
+    <circle cx="120" cy="350" r="10" fill="#eab308" opacity="0.7"/>
+    <circle cx="120" cy="350" r="5" fill="#fde047"/>
+
+    <!-- Node 4 - Medium (yellow) -->
+    <circle cx="480" cy="350" r="10" fill="#eab308" opacity="0.7"/>
+    <circle cx="480" cy="350" r="5" fill="#fde047"/>
+
+    <!-- Node 5 - Low (green) -->
+    <circle cx="180" cy="480" r="10" fill="#22c55e" opacity="0.7"/>
+    <circle cx="180" cy="480" r="5" fill="#86efac"/>
+
+    <!-- Node 6 - Low (green) -->
+    <circle cx="420" cy="480" r="10" fill="#22c55e" opacity="0.7"/>
+    <circle cx="420" cy="480" r="5" fill="#86efac"/>
+  </g>
+
+  <!-- Central Shield -->
+  <g transform="translate(300, 290)" filter="url(#glow)">
+    <path d="M0 -70 L55 -45 L55 15 L0 65 L-55 15 L-55 -45 Z" fill="url(#shieldGrad)" opacity="0.9"/>
+    <path d="M0 -50 L38 -32 L38 10 L0 45 L-38 10 L-38 -32 Z" fill="none" stroke="white" stroke-width="2" opacity="0.6"/>
+    <!-- Checkmark inside shield -->
+    <path d="M-15 0 L-5 10 L18 -12" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Pulse rings around shield -->
+  <circle cx="300" cy="290" r="60" fill="none" stroke="#34d399" stroke-width="1" opacity="0.3">
+    <animate attributeName="r" from="60" to="100" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" from="0.3" to="0" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="300" cy="290" r="60" fill="none" stroke="#34d399" stroke-width="1" opacity="0.2">
+    <animate attributeName="r" from="60" to="100" dur="3s" begin="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" from="0.2" to="0" dur="3s" begin="1.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Data flow particles (animated dots) -->
+  <circle r="3" fill="#6ee7b7">
+    <animateMotion dur="4s" repeatCount="indefinite" path="M150,180 L300,300"/>
+  </circle>
+  <circle r="3" fill="#6ee7b7">
+    <animateMotion dur="4s" repeatCount="indefinite" begin="1s" path="M450,180 L300,300"/>
+  </circle>
+  <circle r="2.5" fill="#86efac">
+    <animateMotion dur="5s" repeatCount="indefinite" begin="2s" path="M180,480 L300,300"/>
+  </circle>
+
+  <!-- Bottom label -->
+  <text x="300" y="560" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="14" opacity="0.5">
+    Data Quality • Risk Monitoring • Alert Management
+  </text>
+</svg>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Globe } from "lucide-react";
 
 import { APP_CONFIG } from "@/config/app-config";
+import { FtgLogo } from "@/components/ftg-logo";
 
 import { RegisterForm } from "../../_components/register-form";
 import { GoogleButton } from "../../_components/social-auth/google-button";
@@ -21,6 +22,15 @@ export default function RegisterV2() {
             <span className="relative z-10 bg-background px-2 text-muted-foreground">Or continue with</span>
           </div>
           <RegisterForm />
+        </div>
+        {/* Developer company footnote */}
+        <div className="flex items-center gap-3 border-t pt-4">
+          <p className="w-4/5 text-muted-foreground text-xs leading-relaxed">
+            Developed by <span className="font-medium text-foreground">FTG</span> — Future • Technology • Growth
+          </p>
+          <div className="w-1/5 flex justify-end">
+            <FtgLogo className="h-6 w-auto" />
+          </div>
         </div>
       </div>
 
