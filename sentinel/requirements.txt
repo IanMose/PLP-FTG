@@ -1,0 +1,7 @@
+pandas
+pandera
+pytest
+duckdb
+pyarrow
+numpy
+faker

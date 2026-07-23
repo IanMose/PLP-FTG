@@ -1,0 +1,49 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# === Java / Maven ===
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# === IDE ===
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# === Node / Next.js ===
+node_modules/
+.next/
+dist/
+.env
+.env.local
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Data / warehouse artifacts ===
+sentinel/data/raw/
+sentinel/data/warehouse/*.duckdb
+sentinel/data/warehouse/*.parquet
+sentinel/data/warehouse/*.json
+sentinel/data/quarantine/
+
+# === Logs ===
+*.log

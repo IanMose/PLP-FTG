@@ -1,0 +1,8 @@
+data/raw/
+data/warehouse/*.duckdb
+data/warehouse/*.parquet
+data/warehouse/*.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
