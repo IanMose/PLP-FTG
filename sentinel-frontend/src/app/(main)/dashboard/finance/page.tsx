@@ -3,32 +3,31 @@ import { Download, RotateCw, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchAlerts, fetchQualitySummary } from "@/lib/sentinel/api";
 
-import { BalanceDistributionCard } from "./_components/balance-distribution-card";
-import { FinanceNotification } from "./_components/finance-notification";
-import { IncomeBreakdown } from "./_components/income-breakdown";
-import { OverviewKpis } from "./_components/overview-kpis";
-import { QuickActions } from "./_components/quick-actions";
-import { TransactionsOverviewCard } from "./_components/transactions-overview-card";
-import { UpcomingTransactions } from "./_components/upcoming-transactions";
-import { Wallet } from "./_components/wallet";
+import { AlertKpis } from "./_components/alert-kpis";
+import { AlertTimeline } from "./_components/alert-timeline";
+import { AlertTrendChart } from "./_components/alert-trend-chart";
+import { FullAlertFeed } from "./_components/full-alert-feed";
 
-export default function Page() {
+export default async function Page() {
+  const [alerts, quality] = await Promise.all([fetchAlerts(), fetchQualitySummary()]);
+
   const formattedDate = format(new Date(), "EEEE, do MMMM yyyy");
 
   return (
     <div className="flex flex-col gap-4">
       <div className="space-y-1">
-        <h1 className="text-3xl tracking-tight">Personal Finances</h1>
+        <h1 className="text-3xl tracking-tight">Alerts</h1>
         <p className="text-muted-foreground text-sm">{formattedDate}</p>
       </div>
 
-      <Tabs defaultValue="30-days" className="flex flex-col gap-4">
+      <Tabs defaultValue="overview" className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <TabsList variant="line">
-            <TabsTrigger value="30-days">Dashboard</TabsTrigger>
-            <TabsTrigger value="12-months">Accounts</TabsTrigger>
-            <TabsTrigger value="custom">Transactions</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -47,50 +46,27 @@ export default function Page() {
           </div>
         </div>
 
-        <TabsContent value="30-days" className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            <div className="xl:col-span-6">
-              <OverviewKpis />
-            </div>
-
-            <div className="flex flex-col gap-4 xl:col-span-6">
-              <IncomeBreakdown />
-              <FinanceNotification />
-            </div>
-          </div>
+        <TabsContent value="overview" className="flex flex-col gap-4">
+          <AlertKpis alerts={alerts} quality={quality} />
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
             <div className="xl:col-span-7">
-              <TransactionsOverviewCard />
+              <AlertTrendChart />
             </div>
             <div className="xl:col-span-5">
-              <BalanceDistributionCard />
+              <AlertTimeline alerts={alerts} />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            <div className="xl:col-span-4">
-              <Wallet />
-            </div>
-            <div className="xl:col-span-4">
-              <UpcomingTransactions />
-            </div>
-            <div className="xl:col-span-4">
-              <QuickActions />
-            </div>
-          </div>
+          <FullAlertFeed alerts={alerts} />
         </TabsContent>
 
-        <TabsContent value="12-months">
-          <div className="flex h-64 items-center justify-center rounded-xl border border-border border-dashed text-muted-foreground">
-            Accounts view coming soon.
-          </div>
+        <TabsContent value="active">
+          <FullAlertFeed alerts={alerts.filter((a) => a.status === "active")} />
         </TabsContent>
 
-        <TabsContent value="custom">
-          <div className="flex h-64 items-center justify-center rounded-xl border border-border border-dashed text-muted-foreground">
-            Transactions view coming soon.
-          </div>
+        <TabsContent value="history">
+          <FullAlertFeed alerts={alerts.filter((a) => a.status !== "active")} />
         </TabsContent>
       </Tabs>
     </div>
