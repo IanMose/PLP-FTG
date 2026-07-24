@@ -2,12 +2,12 @@
 
 ## Overview
 
-Generated with **seed `1500`** on anchor date `2026-07-22` for full reproducibility.
+Generated with **seed `1508`** on anchor date `2026-07-22` for full reproducibility.
 Running `python3 src/generate_data.py` twice produces identical output.
 
 - **Total data rows:** 15685 (incidents: 6090, audits: 9595)
 - **Reference rows:** 6 sites (dim_site.csv)
-- **Total issues deliberately injected:** 6215
+- **Total issues deliberately injected:** 6237
 
 ## Files Produced
 
@@ -16,7 +16,7 @@ Running `python3 src/generate_data.py` twice produces identical output.
 | `dim_site.csv` | 6 KPC-modeled pipeline sites | 6 |
 | `incidents_raw.csv` | Environmental incident records (messy) | 6090 |
 | `audits_raw.csv` | Compliance audit records (messy) | 9595 |
-| `ground_truth_issues.csv` | Answer key: every injected issue | 6215 |
+| `ground_truth_issues.csv` | Answer key: every injected issue | 6237 |
 
 ## Deliberate Signal (for Stage 2 risk model)
 
@@ -37,18 +37,18 @@ weak audit follow-through precedes environmental incidents.
 
 | Issue Type | Count | Expected Pipeline Outcome |
 |-----------|-------|--------------------------|
-| `mixed_date_format` | 3516 | Corrected (standardized to ISO 8601) |
-| `dirty_label` | 1339 | Corrected (auto-normalized) |
-| `missing_required_field` | 544 | Review (held for human sign-off) |
-| `out_of_range` | 312 | Rejected or Corrected (clamp if recoverable) |
-| `future_date` | 197 | Rejected (physically impossible) |
+| `mixed_date_format` | 3571 | Corrected (standardized to ISO 8601) |
+| `dirty_label` | 1285 | Corrected (auto-normalized) |
+| `missing_required_field` | 516 | Review (held for human sign-off) |
+| `out_of_range` | 311 | Rejected or Corrected (clamp if recoverable) |
+| `future_date` | 209 | Rejected (physically impossible) |
 | `duplicate_id` | 185 | Rejected (uniqueness violation) |
-| `closed_before_inspection` | 122 | Rejected (logical impossibility) |
+| `closed_before_inspection` | 160 | Rejected (logical impossibility) |
 
 ## Issues by Dataset
 
-- incidents: 3428
-- audits: 2787
+- incidents: 3353
+- audits: 2884
 
 ## How to Compute Detection Rate
 

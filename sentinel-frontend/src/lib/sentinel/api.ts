@@ -2,14 +2,17 @@
  * Typed fetch wrappers for the Sentinel Spring Boot backend API.
  *
  * When NEXT_PUBLIC_SENTINEL_API_URL is set, fetches from the real backend.
- * Otherwise, falls back to local mock data for frontend-only development.
+ * If the backend is unreachable or slow, gracefully falls back to mock data.
  */
 
 import type { Alert, DataQualitySummary, IngestBatch, SiteDetail, SiteRiskSummary } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
 
-const fetchOpts: RequestInit = { cache: "no-store" };
+const fetchOpts: RequestInit = {
+  cache: "no-store",
+  signal: AbortSignal.timeout(10000), // 10s timeout — covers JVM cold start
+};
 
 // ─── Risk ───────────────────────────────────────────────────────────────────
 
@@ -19,9 +22,15 @@ export async function fetchRiskSummary(): Promise<SiteRiskSummary[]> {
     const { mockSites } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
     return mockSites;
   }
-  const res = await fetch(`${API_BASE}/api/sites/risk-summary`, fetchOpts);
-  if (!res.ok) throw new Error(`Risk summary fetch failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/sites/risk-summary`, fetchOpts);
+    if (!res.ok) throw new Error(`Risk summary fetch failed: ${res.status}`);
+    return res.json();
+  } catch {
+    console.warn("[Sentinel API] risk-summary unreachable, using mock data");
+    const { mockSites } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
+    return mockSites;
+  }
 }
 
 /** GET /api/sites/{siteId} */
@@ -30,9 +39,15 @@ export async function fetchSiteDetail(siteId: string): Promise<SiteDetail> {
     const { getMockSiteDetail } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
     return getMockSiteDetail(siteId);
   }
-  const res = await fetch(`${API_BASE}/api/sites/${siteId}`, fetchOpts);
-  if (!res.ok) throw new Error(`Site detail fetch failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/sites/${siteId}`, fetchOpts);
+    if (!res.ok) throw new Error(`Site detail fetch failed: ${res.status}`);
+    return res.json();
+  } catch {
+    console.warn(`[Sentinel API] site/${siteId} unreachable, using mock data`);
+    const { getMockSiteDetail } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
+    return getMockSiteDetail(siteId);
+  }
 }
 
 // ─── Alerts ─────────────────────────────────────────────────────────────────
@@ -43,9 +58,15 @@ export async function fetchAlerts(): Promise<Alert[]> {
     const { mockAlerts } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
     return mockAlerts;
   }
-  const res = await fetch(`${API_BASE}/api/alerts`, fetchOpts);
-  if (!res.ok) throw new Error(`Alerts fetch failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/alerts`, fetchOpts);
+    if (!res.ok) throw new Error(`Alerts fetch failed: ${res.status}`);
+    return res.json();
+  } catch {
+    console.warn("[Sentinel API] alerts unreachable, using mock data");
+    const { mockAlerts } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
+    return mockAlerts;
+  }
 }
 
 /** POST /api/alerts/{id}/ack */
@@ -63,9 +84,15 @@ export async function fetchQualitySummary(): Promise<DataQualitySummary> {
     const { mockQualitySummary } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
     return mockQualitySummary;
   }
-  const res = await fetch(`${API_BASE}/api/quality/summary`, fetchOpts);
-  if (!res.ok) throw new Error(`Quality summary fetch failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/quality/summary`, fetchOpts);
+    if (!res.ok) throw new Error(`Quality summary fetch failed: ${res.status}`);
+    return res.json();
+  } catch {
+    console.warn("[Sentinel API] quality/summary unreachable, using mock data");
+    const { mockQualitySummary } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
+    return mockQualitySummary;
+  }
 }
 
 /** GET /api/quality/batches */
@@ -74,7 +101,13 @@ export async function fetchBatches(): Promise<IngestBatch[]> {
     const { mockBatches } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
     return mockBatches;
   }
-  const res = await fetch(`${API_BASE}/api/quality/batches`, fetchOpts);
-  if (!res.ok) throw new Error(`Batches fetch failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/quality/batches`, fetchOpts);
+    if (!res.ok) throw new Error(`Batches fetch failed: ${res.status}`);
+    return res.json();
+  } catch {
+    console.warn("[Sentinel API] quality/batches unreachable, using mock data");
+    const { mockBatches } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
+    return mockBatches;
+  }
 }

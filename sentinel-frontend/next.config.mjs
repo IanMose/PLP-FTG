@@ -5,6 +5,11 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
+  // Limit dev server memory usage and parallelism
+  experimental: {
+    workerThreads: false,
+    cpus: 2,
+  },
   async redirects() {
     return [
       {

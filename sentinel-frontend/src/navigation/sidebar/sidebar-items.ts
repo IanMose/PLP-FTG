@@ -61,7 +61,7 @@ export const sidebarItems: NavGroup[] = [
       {
         id: "alerts",
         title: "Alerts",
-        url: "/dashboard/finance",
+        url: "/dashboard/alerts",
         icon: Bell,
       },
       {

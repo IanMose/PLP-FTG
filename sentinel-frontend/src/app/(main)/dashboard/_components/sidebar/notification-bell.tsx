@@ -80,7 +80,7 @@ export function NotificationBell() {
         </div>
         <div className="border-t px-4 py-2">
           <Button asChild variant="ghost" size="sm" className="w-full">
-            <Link href="/dashboard/finance">View all alerts</Link>
+            <Link href="/dashboard/alerts">View all alerts</Link>
           </Button>
         </div>
       </PopoverContent>
