@@ -16,23 +16,23 @@ interface RiskHeatmapProps {
 
 const severityConfig: Record<SeverityBand, { color: string; bg: string; icon: typeof Shield }> = {
   Critical: {
-    color: "text-red-700 dark:text-red-400",
-    bg: "bg-red-500/15 ring-red-500/30",
+    color: "text-red-400",
+    bg: "bg-red-950/80 ring-red-500/40",
     icon: ShieldAlert,
   },
   High: {
-    color: "text-orange-700 dark:text-orange-400",
-    bg: "bg-orange-500/15 ring-orange-500/30",
+    color: "text-orange-400",
+    bg: "bg-orange-950/70 ring-orange-500/40",
     icon: AlertTriangle,
   },
   Medium: {
-    color: "text-yellow-700 dark:text-yellow-400",
-    bg: "bg-yellow-500/15 ring-yellow-500/30",
+    color: "text-yellow-400",
+    bg: "bg-yellow-950/60 ring-yellow-500/30",
     icon: Shield,
   },
   Low: {
-    color: "text-green-700 dark:text-green-400",
-    bg: "bg-green-500/15 ring-green-500/30",
+    color: "text-green-400",
+    bg: "bg-green-950/70 ring-green-500/40",
     icon: ShieldCheck,
   },
 };

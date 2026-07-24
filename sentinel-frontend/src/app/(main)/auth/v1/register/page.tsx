@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { Command } from "lucide-react";
-
+import { SentinelLogo } from "@/components/sentinel-logo";
+import { FtgLogo } from "@/components/ftg-logo";
 import { RegisterForm } from "../../_components/register-form";
 import { GoogleButton } from "../../_components/social-auth/google-button";
 
@@ -25,6 +25,15 @@ export default function RegisterV1() {
                 Login
               </Link>
             </p>
+            {/* Developer company footnote */}
+            <div className="flex items-center gap-3 border-t pt-4 mt-4">
+              <p className="w-4/5 text-muted-foreground text-xs leading-relaxed">
+                Developed by <span className="font-medium text-foreground">FTG</span> — Future • Technology • Growth
+              </p>
+              <div className="w-1/5 flex justify-end">
+                <FtgLogo className="h-6 w-auto" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -32,7 +41,7 @@ export default function RegisterV1() {
       <div className="hidden bg-primary lg:block lg:w-1/3">
         <div className="flex h-full flex-col items-center justify-center p-12 text-center">
           <div className="space-y-6">
-            <Command className="mx-auto size-12 text-primary-foreground" />
+            <SentinelLogo className="mx-auto size-12 text-primary-foreground" />
             <div className="space-y-2">
               <h1 className="font-light text-5xl text-primary-foreground">Welcome!</h1>
               <p className="text-primary-foreground/80 text-xl">You&apos;re in the right place.</p>

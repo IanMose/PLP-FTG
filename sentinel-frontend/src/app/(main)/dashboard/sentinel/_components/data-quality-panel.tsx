@@ -93,22 +93,6 @@ export function DataQualityPanel({ summary, batches }: DataQualityPanelProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Pass rate */}
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-          <div className="space-y-0.5">
-            <p className="font-medium text-sm">Pass Rate (Trusted + Corrected)</p>
-            <p className="text-muted-foreground text-xs">Threshold: {(summary.threshold * 100).toFixed(0)}%</p>
-          </div>
-          <div
-            className={cn(
-              "font-bold text-2xl tabular-nums",
-              summary.passRate >= summary.threshold ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400",
-            )}
-          >
-            {(summary.passRate * 100).toFixed(1)}%
-          </div>
-        </div>
-
         {/* Distribution bar */}
         <QualityBar summary={summary} />
 

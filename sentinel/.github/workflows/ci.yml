@@ -26,9 +26,12 @@ jobs:
       - name: Run unit tests
         run: pytest tests/ -v
 
-      - name: Run ETL against sample data
+      - name: Generate synthetic data
+        run: python3 src/generate_data.py
+
+      - name: Run ETL pipeline
         run: |
-          python -m src.ingest --input data/fixtures
+          python -m src.ingest
           python -m src.transform
           python -m src.decide
           python -m src.load
