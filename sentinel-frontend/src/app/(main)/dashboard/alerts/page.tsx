@@ -51,7 +51,7 @@ export default async function Page() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
             <div className="xl:col-span-7">
-              <AlertTrendChart />
+              <AlertTrendChart alerts={alerts} />
             </div>
             <div className="xl:col-span-5">
               <AlertTimeline alerts={alerts} />

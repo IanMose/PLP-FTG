@@ -8,6 +8,8 @@ import lombok.Data;
 public class IncidentDto {
     private String incidentId;
     private String siteId;
+    private Double latitude;
+    private Double longitude;
     private String incidentDate;
     private String severity;
     private String description;

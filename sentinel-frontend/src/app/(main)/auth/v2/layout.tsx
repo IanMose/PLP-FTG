@@ -2,8 +2,6 @@ import type { ReactNode } from "react";
 
 import Image from "next/image";
 
-import { APP_CONFIG } from "@/config/app-config";
-
 export default function Layout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <main>
@@ -17,18 +15,44 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
             priority
           />
           <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/30 to-transparent" />
-          <div className="absolute top-10 z-10 px-10">
-            <div className="flex items-center gap-5">
-              <Image
-                src="/sentinel-logo-v2.png"
-                alt="Sentinel Logo"
-                width={90}
-                height={90}
-                className="object-contain rounded-2xl"
-              />
-              <h1 className="font-bold text-6xl text-white">{APP_CONFIG.name}</h1>
+
+          {/* KPC badge overlay — bottom right */}
+          <div className="absolute bottom-8 right-0 z-10">
+            <div className="relative rotate-180">
+              {/* Bookmark/ribbon shape */}
+              <svg
+                width="140"
+                height="180"
+                viewBox="0 0 140 180"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="drop-shadow-lg"
+              >
+                <path
+                  d="M0 20C0 8.954 8.954 0 20 0h100c11.046 0 20 8.954 20 20v130c0 16.569-13.431 30-30 30H20c-11.046 0-20-8.954-20-20V20Z"
+                  fill="#CC3131"
+                />
+                {/* Curled edge details */}
+                <path
+                  d="M0 10c0-5.523 4.477-10 10-10h2v6c0 2.21-1.79 4-4 4H0v0Z"
+                  fill="#8B1F1F"
+                />
+                <path
+                  d="M0 170c0 5.523 4.477 10 10 10h2v-6c0-2.21-1.79-4-4-4H0v0Z"
+                  fill="#8B1F1F"
+                />
+              </svg>
+              {/* KPC logo inside the ribbon (counter-rotated so it appears upright) */}
+              <div className="absolute inset-0 flex items-center justify-center rotate-180">
+                <Image
+                  src="/kpc-logo.svg"
+                  alt="KPC Logo"
+                  width={70}
+                  height={90}
+                  className="object-contain"
+                />
+              </div>
             </div>
-            <p className="mt-4 text-xl text-white/90">HSE Early Warning Detection System</p>
           </div>
         </div>
         <div className="relative order-1 flex h-full">{children}</div>

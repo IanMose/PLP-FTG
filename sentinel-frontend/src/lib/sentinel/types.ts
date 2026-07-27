@@ -7,21 +7,24 @@ export type DecisionOutcome = "trusted" | "corrected" | "review" | "rejected";
 /** Alert status */
 export type AlertStatus = "active" | "acknowledged" | "resolved";
 
-// ─── Risk Summary ───────────────────────────────────────────────────────────
+// Risk Summary
 
 export interface SiteRiskSummary {
   siteId: string;
   siteName: string;
+  latitude: number;
+  longitude: number;
   riskScore: number;
   severityBand: SeverityBand;
   incidentCount: number;
+  pressureSpikeCount: number;
   lastAuditDate: string;
   daysSinceLastAudit: number;
   correctedRate: number;
   rejectedRate: number;
 }
 
-// ─── Alerts ─────────────────────────────────────────────────────────────────
+// Alerts
 
 export interface Alert {
   id: string;
@@ -38,7 +41,7 @@ export interface Alert {
   acknowledgedBy?: string;
 }
 
-// ─── Data Quality ───────────────────────────────────────────────────────────
+// Data Quality
 
 export interface DataQualitySummary {
   trusted: number;
@@ -65,11 +68,36 @@ export interface IngestBatch {
   rejectedCount: number;
 }
 
-// ─── Site Detail ────────────────────────────────────────────────────────────
+// Telemetry
+
+export interface TelemetryReading {
+  readingId: string;
+  timestamp: string;
+  site: string;
+  pipelineSection: string;
+  pressurePsi: number | null;
+  flowRateBph: number | null;
+  temperatureCelsius: number | null;
+  valveStatus: string;
+  sensorId: string;
+}
+
+export interface TelemetrySummary {
+  totalReadings: number;
+  pressureSpikeCount: number;
+  sensorDropoutCount: number;
+  avgPressure: number;
+  avgFlowRate: number;
+  avgTemperature: number;
+}
+
+// Site Detail
 
 export interface Incident {
   incidentId: string;
   siteId: string;
+  latitude?: number;
+  longitude?: number;
   incidentDate: string;
   severity: SeverityBand;
   description: string;
@@ -93,8 +121,12 @@ export interface SiteDetail {
   siteId: string;
   siteName: string;
   location: string;
+  latitude: number;
+  longitude: number;
   riskScore: number;
   severityBand: SeverityBand;
+  pressureSpikeCount: number;
   incidents: Incident[];
   audits: Audit[];
+  telemetryReadings: TelemetryReading[];
 }

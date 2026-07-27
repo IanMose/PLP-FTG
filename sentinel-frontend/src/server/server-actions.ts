@@ -15,6 +15,12 @@ export async function getValueFromCookie(key: string): Promise<string | undefine
   return cookieStore.get(key)?.value;
 }
 
+/** Read the JWT written by LoginForm on the client side. */
+export async function getAuthToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get("sentinel-token")?.value;
+}
+
 export async function setValueToCookie(
   key: string,
   value: string,

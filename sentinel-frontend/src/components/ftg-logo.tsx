@@ -4,10 +4,6 @@ interface FtgLogoProps {
   className?: string;
 }
 
-/**
- * FTG company logo — Future • Technology • Growth
- * Developer company branding mark.
- */
 export function FtgLogo({ className }: FtgLogoProps) {
   return (
     <svg

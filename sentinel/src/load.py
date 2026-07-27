@@ -63,7 +63,7 @@ def load_dim_site(output_dir: str, raw_dir: str = "data/raw") -> int:
 def load_trusted_output(decided_df: pd.DataFrame, output_dir: str) -> dict:
     """
     Filter to trusted + corrected records and write to warehouse,
-    split into fact_incidents and fact_audits.
+    split into fact_incidents, fact_audits, and fact_telemetry.
 
     Also writes ALL decided records (including review/rejected with reasons)
     to the warehouse for full auditability, and quarantines rejected as CSV.
@@ -89,7 +89,21 @@ def load_trusted_output(decided_df: pd.DataFrame, output_dir: str) -> dict:
         errors="ignore",
     )
 
-    # Split into incidents and audits based on which ID column is populated
+    # Split into incidents, audits, and telemetry based on which ID column is populated
+    incidents_df = pd.DataFrame()
+    audits_df = pd.DataFrame()
+    telemetry_df = pd.DataFrame()
+
+    if "reading_id" in warehouse_df.columns:
+        # Telemetry dataset
+        telemetry_df = warehouse_df[
+            warehouse_df["reading_id"].notna() & (warehouse_df["reading_id"] != "")
+        ].copy()
+        # Remove non-telemetry rows from telemetry
+        warehouse_df = warehouse_df[
+            ~(warehouse_df["reading_id"].notna() & (warehouse_df["reading_id"] != ""))
+        ]
+
     if "incident_id" in warehouse_df.columns and "audit_id" in warehouse_df.columns:
         # Combined dataset — split by ID presence
         incidents_df = warehouse_df[
@@ -106,40 +120,36 @@ def load_trusted_output(decided_df: pd.DataFrame, output_dir: str) -> dict:
         )]
         audit_cols = [c for c in audits_df.columns if c not in (
             "incident_id", "incident_type", "description", "root_cause",
-            "response_time_hours", "severity"
+            "response_time_hours", "severity", "latitude", "longitude"
         )]
 
         incidents_df = incidents_df[incident_cols].dropna(axis=1, how="all")
         audits_df = audits_df[audit_cols].dropna(axis=1, how="all")
 
-        # Write incidents
-        if len(incidents_df) > 0:
-            load_to_parquet(incidents_df, output_dir, "fact_incidents")
-            load_to_duckdb(incidents_df, db_path, "fact_incidents")
-
-        # Write audits
-        if len(audits_df) > 0:
-            load_to_parquet(audits_df, output_dir, "fact_audits")
-            load_to_duckdb(audits_df, db_path, "fact_audits")
-
     elif "incident_id" in warehouse_df.columns:
-        load_to_parquet(warehouse_df, output_dir, "fact_incidents")
-        load_to_duckdb(warehouse_df, db_path, "fact_incidents")
         incidents_df = warehouse_df
-        audits_df = pd.DataFrame()
-
     elif "audit_id" in warehouse_df.columns:
-        load_to_parquet(warehouse_df, output_dir, "fact_audits")
-        load_to_duckdb(warehouse_df, db_path, "fact_audits")
-        incidents_df = pd.DataFrame()
         audits_df = warehouse_df
 
-    else:
-        # Generic fallback
+    # Write incidents
+    if len(incidents_df) > 0:
+        load_to_parquet(incidents_df, output_dir, "fact_incidents")
+        load_to_duckdb(incidents_df, db_path, "fact_incidents")
+
+    # Write audits
+    if len(audits_df) > 0:
+        load_to_parquet(audits_df, output_dir, "fact_audits")
+        load_to_duckdb(audits_df, db_path, "fact_audits")
+
+    # Write telemetry
+    if len(telemetry_df) > 0:
+        load_to_parquet(telemetry_df, output_dir, "fact_telemetry")
+        load_to_duckdb(telemetry_df, db_path, "fact_telemetry")
+
+    # If no recognized ID columns, write as generic fact_records
+    if len(incidents_df) == 0 and len(audits_df) == 0 and len(telemetry_df) == 0 and len(warehouse_df) > 0:
         load_to_parquet(warehouse_df, output_dir, "fact_records")
         load_to_duckdb(warehouse_df, db_path, "fact_records")
-        incidents_df = warehouse_df
-        audits_df = pd.DataFrame()
 
     # --- Quarantine rejected records as inspectable CSV ---
     rejected_df = decided_df[decided_df["decision"] == "rejected"]
@@ -152,9 +162,10 @@ def load_trusted_output(decided_df: pd.DataFrame, output_dir: str) -> dict:
         print(f"  Quarantined {len(rejected_df)} rejected records -> {rejected_path}")
 
     return {
-        "incidents_loaded": len(incidents_df) if incidents_df is not None else 0,
-        "audits_loaded": len(audits_df) if audits_df is not None else 0,
-        "total_loaded": len(warehouse_df),
+        "incidents_loaded": len(incidents_df),
+        "audits_loaded": len(audits_df),
+        "telemetry_loaded": len(telemetry_df),
+        "total_loaded": len(incidents_df) + len(audits_df) + len(telemetry_df),
         "rejected": len(rejected_df),
         "db_path": db_path,
     }
@@ -196,6 +207,7 @@ def main():
     print(f"  dim_site:       {n_sites} rows")
     print(f"  fact_incidents: {result['incidents_loaded']} rows")
     print(f"  fact_audits:    {result['audits_loaded']} rows")
+    print(f"  fact_telemetry: {result['telemetry_loaded']} rows")
     print(f"  rejected:       {result['rejected']} rows (quarantined)")
     print(f"  DuckDB:         {result['db_path']}")
 

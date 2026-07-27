@@ -8,6 +8,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
 
+import { fetchAlerts } from "@/lib/sentinel/api";
+
 import { LayoutControls } from "./_components/sidebar/layout-controls";
 import { NotificationBell } from "./_components/sidebar/notification-bell";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
@@ -16,9 +18,10 @@ import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
-  const [variant, collapsible] = await Promise.all([
+  const [variant, collapsible, alerts] = await Promise.all([
     getPreference("sidebar_variant"),
     getPreference("sidebar_collapsible"),
+    fetchAlerts(),
   ]);
 
   return (
@@ -60,7 +63,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
             <div className="flex items-center gap-2">
               <LayoutControls />
               <ThemeSwitcher />
-              <NotificationBell />
+              <NotificationBell alerts={alerts} />
             </div>
           </div>
         </header>

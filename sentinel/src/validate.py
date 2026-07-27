@@ -12,7 +12,10 @@ Validation Rules:
 | Valid severity        | severity         | One of Low / Medium / High / Critical            |
 | Score bounds          | compliance_score | Between 0 and 100                                |
 | Date order            | closed_date      | Cannot precede inspection_date, if present       |
-| Uniqueness            | incident_id/audit_id | Unique within a batch                        |
+| Uniqueness            | incident_id/audit_id/reading_id | Unique within a batch             |
+| Valid coordinates     | latitude/longitude | Lat in [-90,90], Lon in [-180,180], not (0,0)  |
+| Valid pressure        | pressure_psi     | Between 0 and 1000 PSI                           |
+| Sensor not null       | pressure/flow/temp | At least one sensor reading must be present    |
 """
 
 import argparse
@@ -75,7 +78,7 @@ def validate_date_order(df: pd.DataFrame) -> pd.Series:
 
 
 def validate_uniqueness(df: pd.DataFrame) -> pd.Series:
-    """incident_id or audit_id must be unique within the batch (checked per-type)."""
+    """incident_id, audit_id, or reading_id must be unique within the batch."""
     result = pd.Series([True] * len(df), index=df.index)
 
     if "incident_id" in df.columns:
@@ -94,6 +97,86 @@ def validate_uniqueness(df: pd.DataFrame) -> pd.Series:
             aud_dupes = aud_subset.duplicated(subset=["audit_id"], keep=False)
             result.loc[aud_dupes[aud_dupes].index] = False
 
+    if "reading_id" in df.columns:
+        has_read_id = df["reading_id"].notna() & (df["reading_id"].astype(str) != "")
+        if has_read_id.any():
+            read_subset = df.loc[has_read_id]
+            read_dupes = read_subset.duplicated(subset=["reading_id"], keep=False)
+            result.loc[read_dupes[read_dupes].index] = False
+
+    return result
+
+
+def validate_coordinates(df: pd.DataFrame) -> pd.Series:
+    """latitude must be in [-90, 90], longitude in [-180, 180], and not (0, 0)."""
+    if "latitude" not in df.columns or "longitude" not in df.columns:
+        return pd.Series([True] * len(df), index=df.index)
+
+    lat = pd.to_numeric(df["latitude"], errors="coerce")
+    lon = pd.to_numeric(df["longitude"], errors="coerce")
+
+    # Valid if both are NaN (not applicable) OR within valid ranges and not (0,0)
+    both_nan = lat.isna() & lon.isna()
+    valid_range = (lat >= -90) & (lat <= 90) & (lon >= -180) & (lon <= 180)
+    not_zero = ~((lat == 0.0) & (lon == 0.0))
+
+    return both_nan | (valid_range & not_zero)
+
+
+def validate_pressure(df: pd.DataFrame) -> pd.Series:
+    """pressure_psi must be between 0 and 1000 PSI. Only applies to telemetry rows."""
+    if "pressure_psi" not in df.columns:
+        return pd.Series([True] * len(df), index=df.index)
+
+    # Only validate telemetry rows
+    is_telemetry = pd.Series([False] * len(df), index=df.index)
+    if "reading_id" in df.columns:
+        is_telemetry = df["reading_id"].notna() & (df["reading_id"].astype(str) != "")
+
+    result = pd.Series([True] * len(df), index=df.index)
+
+    if not is_telemetry.any():
+        return result
+
+    pressure = pd.to_numeric(df["pressure_psi"], errors="coerce")
+    # Valid if NaN (missing/dropout) or within bounds
+    valid_pressure = pressure.isna() | ((pressure >= 0) & (pressure <= 1000))
+
+    # Only flag telemetry rows that fail
+    result.loc[is_telemetry & ~valid_pressure] = False
+
+    return result
+
+
+def validate_sensor_readings(df: pd.DataFrame) -> pd.Series:
+    """At least one of pressure_psi, flow_rate_bph, temperature_celsius must be non-null.
+    Only applies to telemetry rows (those with a reading_id)."""
+    sensor_cols = ["pressure_psi", "flow_rate_bph", "temperature_celsius"]
+    present_cols = [c for c in sensor_cols if c in df.columns]
+
+    if not present_cols:
+        return pd.Series([True] * len(df), index=df.index)
+
+    # Only validate rows that are telemetry (have reading_id)
+    is_telemetry = pd.Series([False] * len(df), index=df.index)
+    if "reading_id" in df.columns:
+        is_telemetry = df["reading_id"].notna() & (df["reading_id"].astype(str) != "")
+
+    # Non-telemetry rows always pass this rule
+    result = pd.Series([True] * len(df), index=df.index)
+
+    if not is_telemetry.any():
+        return result
+
+    # For telemetry rows, check at least one sensor is non-null
+    has_reading = pd.Series([False] * len(df), index=df.index)
+    for col in present_cols:
+        numeric_col = pd.to_numeric(df[col], errors="coerce")
+        has_reading = has_reading | numeric_col.notna()
+
+    # Only flag telemetry rows that fail
+    result.loc[is_telemetry & ~has_reading] = False
+
     return result
 
 
@@ -104,6 +187,9 @@ VALIDATION_RULES = {
     "score_bounds": validate_score_bounds,
     "date_order": validate_date_order,
     "uniqueness": validate_uniqueness,
+    "valid_coordinates": validate_coordinates,
+    "valid_pressure": validate_pressure,
+    "sensor_readings": validate_sensor_readings,
 }
 
 
