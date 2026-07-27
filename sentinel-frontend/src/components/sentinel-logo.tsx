@@ -6,9 +6,6 @@ interface SentinelLogoProps {
   className?: string;
 }
 
-/**
- * Sentinel brand logo — uses the official sentinel-logo-v2.png.
- */
 export function SentinelLogo({ className }: SentinelLogoProps) {
   return (
     <Image

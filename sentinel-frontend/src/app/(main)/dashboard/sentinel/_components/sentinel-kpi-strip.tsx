@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FileWarning, Shield, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileWarning, Gauge, Shield, XCircle, Zap } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +14,10 @@ export function SentinelKpiStrip({ sites, alerts, quality }: SentinelKpiStripPro
   const criticalSites = sites.filter((s) => s.severityBand === "Critical").length;
   const activeAlerts = alerts.filter((a) => a.status === "active").length;
   const avgRiskScore = Math.round(sites.reduce((sum, s) => sum + s.riskScore, 0) / sites.length);
+  const totalPressureSpikes = sites.reduce((sum, s) => sum + s.pressureSpikeCount, 0);
 
   return (
-    <div className="overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/10">
+    <div className="overflow-hidden rounded-xl bg-card shadow-sm ring-1 ring-border dark:shadow-none dark:ring-foreground/10">
       <div className="grid divide-y *:data-[slot=card]:rounded-none *:data-[slot=card]:ring-0 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
         <Card>
           <CardHeader>
@@ -62,7 +63,7 @@ export function SentinelKpiStrip({ sites, alerts, quality }: SentinelKpiStripPro
           <CardContent className="flex items-center justify-between gap-4">
             <div className="text-2xl leading-none tracking-tight">{avgRiskScore}/100</div>
             <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
-              <FileWarning className="size-4 text-muted-foreground" />
+              <Gauge className="size-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>

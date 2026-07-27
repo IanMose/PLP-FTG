@@ -32,6 +32,17 @@ server:
 sentinel:
   cors:
     allowed-origins: http://localhost:3000,http://localhost:3001
+  jwt:
+    secret: sentinel-hse-jwt-secret-key-must-be-at-least-32-chars-long!
+    expiration-ms: 86400000  # 24 hours
+  etl:
+    enabled: true
+    # Path to the JSON written by sentinel/src/run_pipeline.py
+    # Adjust if your sentinel/ folder lives elsewhere relative to sentinel-backend/
+    live-batch-path: ../sentinel/data/warehouse/live_batch.json
+    sentinel-dir: ../sentinel        # root of the Python project (contains run_live.sh)
+    poll-interval-ms: 60000          # reload every 60 seconds
+    rows-per-cycle: 50               # new rows generated per ETL run
 
 ---
 # PostgreSQL profile
