@@ -205,7 +205,6 @@ export const usersColumns: ColumnDef<UserRow>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>View profile</DropdownMenuItem>
             <DropdownMenuItem>Edit user</DropdownMenuItem>
             <DropdownMenuItem>Manage team</DropdownMenuItem>
             <DropdownMenuItem>Resend invite</DropdownMenuItem>

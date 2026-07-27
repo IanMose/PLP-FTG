@@ -20,11 +20,16 @@ Outputs (in ./data/raw/):
     dim_site.csv                          (6 reference sites)
     incidents_raw.csv                     (environmental incident records)
     audits_raw.csv                        (compliance audit records)
+    pipeline_telemetry_batch1.csv         (telemetry sensor readings — batch 1)
+    pipeline_telemetry_batch2.csv         (telemetry sensor readings — batch 2)
+    dim_asset.csv                         (Mombasa-Nairobi + western spur corridor geo layer)
+    corridor_telemetry.csv                (48h/30min geo-tagged sensor readings incl. rainfall)
     ground_truth_issues.csv               (every injected issue, by record id)
     docs/data_generation_notes.md         (human-readable messiness spec)
 """
 
 import csv
+import math
 import random
 from collections import Counter
 from datetime import datetime, timedelta
@@ -49,6 +54,11 @@ TODAY = datetime(2026, 7, 22)  # anchor date for "future" injection logic
 
 # ============================================================================
 # Reference data: dim_site
+# NOTE: The 6-site roster is deliberately kept fictionalized (not renamed to
+# real KPC station numbers) so the Kimeu v. KPC high-risk framing stays at a
+# safe narrative distance from real asset names. See integration context doc
+# Section 1 for the trade-off. If your team decides to switch to real station
+# names (PS1-PS28), rename here and propagate through transform.py lookups.
 # ============================================================================
 SITES = [
     {
@@ -100,6 +110,22 @@ HIGH_RISK_SITES = [s["site_code"] for s in SITES if s["risk_profile"] == "high"]
 NORMAL_SITES = [s["site_code"] for s in SITES if s["risk_profile"] == "normal"]
 
 # ============================================================================
+# Canonical Site Coordinates
+# ============================================================================
+CANONICAL_SITE_COORDS = {
+    "Nairobi Terminal":     {"latitude": -1.30,  "longitude": 36.85},
+    "Mombasa Terminal":     {"latitude": -4.05,  "longitude": 39.65},
+    "Eldoret Depot":        {"latitude":  0.52,  "longitude": 35.27},
+    "Kisumu Depot":         {"latitude": -0.10,  "longitude": 34.75},
+    "Nakuru Depot":         {"latitude": -0.30,  "longitude": 36.07},
+    "Sinendet Pump Station":{"latitude":  0.05,  "longitude": 35.45},
+    "Makueni Pump Station": {"latitude": -2.28,  "longitude": 37.83},
+}
+
+# Map site_code -> site_name for coordinate lookup
+SITE_CODE_TO_NAME = {s["site_code"]: s["site_name"] for s in SITES}
+
+# ============================================================================
 # Canonical vocabularies
 # ============================================================================
 CANONICAL_INCIDENT_TYPES = ["Leak", "Spill", "Fire", "Near Miss", "Equipment Failure"]
@@ -107,27 +133,47 @@ CANONICAL_SEVERITIES = ["Low", "Medium", "High", "Critical"]
 
 # Dirty variants for messiness injection
 SEVERITY_DIRTY_VARIANTS = {
-    "Low": ["low", "LOW", "Lo", " Low", "low "],
-    "Medium": ["Med", "medium", "MEDIUM", "Medium ", " medium"],
-    "High": ["HIGH", "high", "Hi", " High"],
+    "Low":      ["low", "LOW", "Lo", " Low", "low "],
+    "Medium":   ["Med", "medium", "MEDIUM", "Medium ", " medium"],
+    "High":     ["HIGH", "high", "Hi", " High"],
     "Critical": ["CRITICAL", "critical", "Crit", "crit", " Critical"],
 }
 
 INCIDENT_TYPE_DIRTY_VARIANTS = {
-    "Leak": ["leak", "LEAK", "Oil Leak", " Leak", "leak "],
-    "Spill": ["SPILL", "spill", " spill ", "Spill ", "Minor Spill"],
-    "Fire": ["fire", "FIRE", "Fire ", " fire"],
-    "Near Miss": ["near miss", "NEAR MISS", "Near  Miss", "near-miss"],
+    "Leak":              ["leak", "LEAK", "Oil Leak", " Leak", "leak "],
+    "Spill":             ["SPILL", "spill", " spill ", "Spill ", "Minor Spill"],
+    "Fire":              ["fire", "FIRE", "Fire ", " fire"],
+    "Near Miss":         ["near miss", "NEAR MISS", "Near  Miss", "near-miss"],
     "Equipment Failure": ["equipment failure", "EQUIPMENT FAILURE", "Equip. Failure", "Equipment  Failure"],
 }
 
+# Site name dirty variants — shared across all datasets
+SITE_DIRTY_VARIANTS = {
+    "SITE-001": ["Nairobi term", "nairobi terminal", "NRB Terminal", "NAIROBI", "Nairobi  Terminal"],
+    "SITE-002": ["Mombasa term", "mombasa terminal", "MSA Terminal", "MOMBASA", "Mombasa  Terminal"],
+    "SITE-003": ["Makueni PS", "makueni pump", "MAKUENI", "Makueni  Pump Station", "makueni pump station"],
+    "SITE-004": ["Nakuru dep", "nakuru depot", "NKR Depot", "NAKURU", "Nakuru  Depot"],
+    "SITE-005": ["Eldoret dep", "eldoret depot", "ELD Depot", "ELDORET", "Eldoret  Depot"],
+    "SITE-006": ["Sinendet PS", "sinendet pump", "SINENDET", "Sinendet  Pump Station", "sinendet pump station"],
+}
+
+# Pipeline sections for telemetry
+PIPELINE_SECTIONS = [
+    "Section A — Mombasa-Nairobi Main",
+    "Section B — Nairobi-Nakuru Spur",
+    "Section C — Nakuru-Eldoret Extension",
+    "Section D — Sinendet Lateral",
+    "Section E — Makueni Branch",
+    "Section F — Kisumu Terminal Link",
+]
+
 # Date format variants for messiness
 DATE_FORMATS = [
-    "%Y-%m-%d",          # ISO (correct)
-    "%Y-%m-%dT%H:%M:%SZ",  # ISO with time + Z
-    "%m/%d/%Y",          # US format
-    "%d/%m/%Y",          # Day-first (ambiguous)
-    "%d-%b-%Y",          # 15-Jan-2024
+    "%Y-%m-%d",           # ISO (correct)
+    "%Y-%m-%dT%H:%M:%SZ", # ISO with time + Z
+    "%m/%d/%Y",           # US format
+    "%d/%m/%Y",           # Day-first (ambiguous)
+    "%d-%b-%Y",           # 15-Jan-2024
 ]
 
 FINDING_CATEGORIES = [
@@ -168,6 +214,15 @@ def maybe_dirty(value: str, dirty_map: dict, rate: float, record_id: str, datase
     return value
 
 
+def maybe_dirty_site(site_code: str, rate: float, record_id: str, dataset: str) -> str:
+    """With probability `rate`, replace site_code with a dirty variant and log it."""
+    if site_code in SITE_DIRTY_VARIANTS and random.random() < rate:
+        dirty = random.choice(SITE_DIRTY_VARIANTS[site_code])
+        log_issue(record_id, dataset, "dirty_label:site", f"{site_code} -> {dirty}")
+        return dirty
+    return site_code
+
+
 def random_date_format(dt: datetime, record_id: str, dataset: str, field: str, dirty_rate: float = 0.20) -> str:
     """Format a datetime, occasionally using a non-ISO format to inject messiness."""
     if random.random() < dirty_rate:
@@ -177,6 +232,42 @@ def random_date_format(dt: datetime, record_id: str, dataset: str, field: str, d
         return formatted
     return dt.strftime("%Y-%m-%d")
 
+
+# ============================================================================
+# Coordinate helpers
+# ============================================================================
+def get_site_coords(site_code: str) -> tuple[float, float]:
+    """Get canonical coordinates for a site, applying random jitter ±0.01 to ±0.03 degrees."""
+    site_name = SITE_CODE_TO_NAME.get(site_code, "")
+    coords = CANONICAL_SITE_COORDS.get(site_name)
+    if coords is None:
+        # Fallback for sites whose name isn't in the coord map
+        coords = {"latitude": -1.30, "longitude": 36.85}
+
+    jitter_lat = random.uniform(0.01, 0.03) * random.choice([-1, 1])
+    jitter_lon = random.uniform(0.01, 0.03) * random.choice([-1, 1])
+
+    return (
+        round(coords["latitude"] + jitter_lat, 6),
+        round(coords["longitude"] + jitter_lon, 6),
+    )
+
+
+def inject_invalid_coordinates(row: dict, record_id: str, dataset: str) -> dict:
+    """With ~1% probability, inject invalid coordinates and log the issue."""
+    if random.random() < 0.01:
+        invalid_type = random.choice(["lat_gt_90", "lon_invalid", "zero_zero"])
+        if invalid_type == "lat_gt_90":
+            row["latitude"] = round(random.uniform(91.0, 180.0), 6)
+            log_issue(record_id, dataset, "invalid_coordinates", f"latitude={row['latitude']} > 90")
+        elif invalid_type == "lon_invalid":
+            row["longitude"] = round(random.uniform(181.0, 360.0), 6)
+            log_issue(record_id, dataset, "invalid_coordinates", f"longitude={row['longitude']} outside valid range")
+        else:  # zero_zero
+            row["latitude"] = 0.0
+            row["longitude"] = 0.0
+            log_issue(record_id, dataset, "invalid_coordinates", "coordinates (0,0)")
+    return row
 
 # ============================================================================
 # Dataset 1: Environmental Incidents
@@ -197,6 +288,9 @@ def generate_incidents(n: int) -> list[dict]:
             site = random.choice(HIGH_RISK_SITES)
         else:
             site = random.choice(NORMAL_SITES)
+
+        # Assign coordinates BEFORE dirty label injection
+        lat, lon = get_site_coords(site)
 
         # Severity: high-risk sites skew toward High/Critical
         if site in HIGH_RISK_SITES:
@@ -231,9 +325,9 @@ def generate_incidents(n: int) -> list[dict]:
 
         # Compliance score: correlated with severity
         base_score = {
-            "Low": np.random.normal(88, 6),
-            "Medium": np.random.normal(75, 8),
-            "High": np.random.normal(60, 10),
+            "Low":      np.random.normal(88, 6),
+            "Medium":   np.random.normal(75, 8),
+            "High":     np.random.normal(60, 10),
             "Critical": np.random.normal(45, 12),
         }[severity]
         compliance_score = round(float(np.clip(base_score, 0, 100)), 1)
@@ -241,6 +335,8 @@ def generate_incidents(n: int) -> list[dict]:
         row = {
             "incident_id": record_id,
             "site": site,
+            "latitude": lat,
+            "longitude": lon,
             "incident_date": incident_date.strftime("%Y-%m-%d"),
             "incident_type": incident_type,
             "severity": severity,
@@ -248,8 +344,7 @@ def generate_incidents(n: int) -> list[dict]:
             "description": fake.sentence(nb_words=random.randint(6, 15)),
             "root_cause": random.choice([
                 "Corrosion", "Valve Failure", "Third-party Damage",
-                "Material Fatigue", "Operator Error", "Sensor Malfunction",
-                ""
+                "Material Fatigue", "Operator Error", "Sensor Malfunction", ""
             ]),
             "response_time_hours": round(float(np.random.gamma(shape=2, scale=4)), 1),
             "status": random.choice(["Open", "Under Investigation", "Closed"]),
@@ -259,6 +354,9 @@ def generate_incidents(n: int) -> list[dict]:
     # ---- Inject messiness ----
     for row in rows:
         rid = row["incident_id"]
+
+        # 0. Invalid coordinates (~1%) — should be rejected
+        inject_invalid_coordinates(row, rid, "incidents")
 
         # 1. Dirty severity casing/abbreviation (~12%)
         row["severity"] = maybe_dirty(
@@ -306,7 +404,6 @@ def generate_incidents(n: int) -> list[dict]:
     random.shuffle(rows)
     return rows
 
-
 # ============================================================================
 # Dataset 2: Compliance Audits
 # ============================================================================
@@ -335,26 +432,14 @@ def generate_audits(n: int) -> list[dict]:
 
         # Status: high-risk sites have more Open/In Progress (less closure)
         if site in HIGH_RISK_SITES:
-            status = random.choices(
-                AUDIT_STATUSES,
-                weights=[0.35, 0.30, 0.35],  # weaker closure
-                k=1
-            )[0]
+            status = random.choices(AUDIT_STATUSES, weights=[0.35, 0.30, 0.35], k=1)[0]
         else:
-            status = random.choices(
-                AUDIT_STATUSES,
-                weights=[0.15, 0.15, 0.70],  # strong closure
-                k=1
-            )[0]
+            status = random.choices(AUDIT_STATUSES, weights=[0.15, 0.15, 0.70], k=1)[0]
 
         # Closed date logic
         closed_date = ""
         if status == "Closed":
-            # High-risk sites take longer to close
-            if site in HIGH_RISK_SITES:
-                lag = random.randint(20, 90)  # longer lag
-            else:
-                lag = random.randint(5, 30)  # normal lag
+            lag = random.randint(20, 90) if site in HIGH_RISK_SITES else random.randint(5, 30)
             closed_dt = inspection_date + timedelta(days=lag)
             closed_date = closed_dt.strftime("%Y-%m-%d")
 
@@ -421,6 +506,454 @@ def generate_audits(n: int) -> list[dict]:
     random.shuffle(rows)
     return rows
 
+# ============================================================================
+# Dataset 3: Pipeline Telemetry
+# ============================================================================
+def generate_telemetry(n: int) -> list[dict]:
+    """
+    Generate continuous pipeline sensor readings over the previous 90 days.
+    Independent of incidents — represents the leading indicator layer.
+
+    Messiness:
+    - ~15% dirty site labels (reuses SITE_DIRTY_VARIANTS)
+    - ~3% sensor dropout (null reading on one numeric field)
+    - ~1% pressure spikes (clustered, gradual build-up over 3-5 readings)
+    - ~1% duplicate reading IDs
+    """
+    rows = []
+    sensor_ids = [f"SNS-{j:03d}" for j in range(1, 15)]  # SNS-001 to SNS-014
+
+    start_date = TODAY - timedelta(days=90)
+    timestamps = sorted([
+        start_date + timedelta(seconds=random.randint(0, 90 * 24 * 3600))
+        for _ in range(n)
+    ])
+
+    spike_cluster_count = max(2, int(n * 0.01 // 4))
+    spike_cluster_starts = sorted(random.sample(range(100, n - 10), min(spike_cluster_count, n - 110)))
+    spike_indices = set()
+    for start_idx in spike_cluster_starts:
+        cluster_len = random.randint(3, 5)
+        for offset in range(cluster_len):
+            if start_idx + offset < n:
+                spike_indices.add(start_idx + offset)
+
+    for i in range(n):
+        record_id = f"TEL-{i + 1:06d}"
+        site = random.choice(SITE_CODES)
+        section = random.choice(PIPELINE_SECTIONS)
+        timestamp = timestamps[i]
+
+        pressure = round(float(np.random.normal(400, 80)), 1)
+        pressure = max(200.0, min(600.0, pressure))
+        flow_rate = round(float(np.random.normal(3000, 800)), 1)
+        flow_rate = max(1000.0, min(5000.0, flow_rate))
+        temperature = round(float(np.random.normal(30, 6)), 1)
+        temperature = max(15.0, min(45.0, temperature))
+
+        valve_status = random.choices(
+            ["Open", "Closed", "Partially Open"],
+            weights=[0.50, 0.30, 0.20],
+            k=1
+        )[0]
+
+        if i in spike_indices:
+            cluster_start = max(s for s in spike_cluster_starts if s <= i)
+            position_in_cluster = i - cluster_start
+            cluster_len = sum(1 for idx in spike_indices if idx >= cluster_start and idx < cluster_start + 6)
+            if position_in_cluster < cluster_len - 1:
+                escalation = 100 + (position_in_cluster * 150)
+                pressure = round(600 + escalation, 1)
+            else:
+                if random.random() < 0.5:
+                    pressure = round(random.uniform(1050, 1500), 1)
+                else:
+                    pressure = round(random.uniform(-50, -10), 1)
+            log_issue(record_id, "telemetry", "pressure_spike",
+                      f"pressure={pressure} at {timestamp.isoformat()} site={site}")
+
+        row = {
+            "reading_id": record_id,
+            "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
+            "site": site,
+            "pipeline_section": section,
+            "pressure_psi": pressure,
+            "flow_rate_bph": flow_rate,
+            "temperature_celsius": temperature,
+            "valve_status": valve_status,
+            "sensor_id": random.choice(sensor_ids),
+        }
+        rows.append(row)
+
+    # ---- Inject messiness ----
+    for row in rows:
+        rid = row["reading_id"]
+
+        # 1. Dirty site label (~15%)
+        row["site"] = maybe_dirty_site(row["site"], 0.15, rid, "telemetry")
+
+        # 2. Sensor dropout (~3%) — null one numeric field
+        if random.random() < 0.03:
+            dropout_field = random.choice(["pressure_psi", "flow_rate_bph", "temperature_celsius"])
+            row[dropout_field] = ""
+            log_issue(rid, "telemetry", "sensor_dropout", f"{dropout_field} set to null")
+
+    # 3. Duplicate reading_ids (~1%)
+    n_dupes = max(2, int(n * 0.01))
+    for row in random.sample(rows, min(n_dupes, len(rows))):
+        dupe = dict(row)
+        rows.append(dupe)
+        log_issue(dupe["reading_id"], "telemetry", "duplicate_id")
+
+    random.shuffle(rows)
+    return rows
+
+# ============================================================================
+# Dataset 4: Corridor Geo Assets — Mombasa-Nairobi main line + western spur
+# ============================================================================
+# ADDITIVE layer — not a replacement for dim_site.
+# dim_site (6 rows) stays the frozen join key for incidents/audits/telemetry.
+# dim_asset gives the map/heatmap view meter-scale granularity along the
+# physical corridors, and links back to dim_site via `nearest_site_code`.
+#
+# FIX (Issue 1): Western spur added — Nairobi Terminal → Nakuru → Sinendet
+# → Eldoret, plus Sinendet → Kisumu branch. This gives SITE-004 (Nakuru),
+# SITE-005 (Eldoret), and SITE-006 (Sinendet — high-risk) corridor coverage.
+#
+# FIX (Issue 2): Kibwezi renamed/corrected. SITE-003 (Makueni Pump Station)
+# maps to PS6 Makindu (nearest real KPC station on this corridor section).
+# Coordinates updated to Makindu town centre (~-2.2833, 37.8333).
+#
+# All coordinates are SIMULATED (jittered from public town-centre reference
+# points). See docs/data_generation_notes.md for the real/synthetic split.
+# ============================================================================
+
+# Main line: Mombasa → Nairobi
+# Format: (town_name, lat, lon, nearest_site_code | None)
+CORRIDOR_WAYPOINTS_MAIN = [
+    ("Mombasa",          -4.0435,  39.6682, "SITE-002"),   # Mombasa Terminal
+    ("Samburu",          -3.9600,  39.1700,  None),
+    ("Maungu",           -3.5450,  38.7550,  None),
+    ("Voi",              -3.3960,  38.5567,  None),
+    ("Manyani",          -3.1900,  38.4500,  None),
+    ("Mtito Andei",      -2.6903,  38.1671,  None),
+    ("Makindu",          -2.2833,  37.8333, "SITE-003"),   # Makueni Pump Station (PS6)
+    ("Sultan Hamud",     -1.9333,  37.3167,  None),
+    ("Konza",            -1.7500,  37.1500,  None),
+    ("Athi River",       -1.4560,  36.9770,  None),
+    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # Nairobi Terminal
+]
+
+# Western spur: Nairobi Terminal → Nakuru → Sinendet → Eldoret
+# (FIX Issue 1: new chain — covers SITE-004, SITE-005, SITE-006)
+CORRIDOR_WAYPOINTS_WESTERN = [
+    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # shared origin
+    ("Naivasha",         -0.7167,  36.4333,  None),         # Morendat / PS23 area
+    ("Nakuru",           -0.3031,  36.0800, "SITE-004"),   # Nakuru Depot
+    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # Sinendet Pump Station (high-risk)
+    ("Eldoret",           0.5167,  35.2833, "SITE-005"),   # Eldoret Depot
+]
+
+# Sinendet → Kisumu branch
+# (FIX Issue 1: branch off the western spur)
+CORRIDOR_WAYPOINTS_KISUMU = [
+    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # branch origin (high-risk)
+    ("Muhoroni",         -0.1500,  35.2000,  None),
+    ("Kisumu",           -0.1022,  34.7617,  None),         # spur terminus
+]
+
+# All three chains combined for asset generation
+ALL_CORRIDOR_CHAINS = [
+    ("main",    CORRIDOR_WAYPOINTS_MAIN),
+    ("western", CORRIDOR_WAYPOINTS_WESTERN),
+    ("kisumu",  CORRIDOR_WAYPOINTS_KISUMU),
+]
+
+# Flood/landslide risk zones — keyed to "segment" label (town1-town2)
+FLOOD_RISK_SEGMENTS = {
+    # Main line flood risk (Tsavo corridor)
+    "Maungu-Voi":              "high_flood",
+    "Voi-Manyani":             "high_flood",
+    "Manyani-Mtito Andei":     "high_flood",
+    "Mtito Andei-Makindu":     "high_flood",
+    "Makindu-Sultan Hamud":    "moderate_flood",
+    "Sultan Hamud-Konza":      "moderate_flood",
+    # Western spur — Rift Valley escarpment landslide risk
+    "Nairobi Terminal-Naivasha": "moderate_flood",
+    "Naivasha-Nakuru":           "high_flood",    # escarpment descent, landslide risk
+    "Sinendet-Muhoroni":         "moderate_flood",
+}
+
+# Named pump stations along the corridor (for asset generation)
+# Each tuple: (asset_id, town_name) — town must exist in one of the waypoint chains
+PUMP_STATION_TOWNS = [
+    # Main line stations
+    ("PS-01", "Mombasa"),
+    ("PS-02", "Samburu"),
+    ("PS-03", "Maungu"),
+    ("PS-04", "Manyani"),
+    ("PS-05", "Mtito Andei"),
+    ("PS-06", "Makindu"),        # FIX Issue 2: was "Kibwezi", corrected to Makindu
+    ("PS-07", "Sultan Hamud"),
+    ("PS-08", "Konza"),
+    ("PS-10", "Nairobi Terminal"),
+    # Western spur stations
+    ("PS-23", "Naivasha"),
+    ("PS-24", "Nakuru"),
+    ("PS-26", "Sinendet"),
+    ("PS-27", "Eldoret"),
+    # Kisumu branch
+    ("PS-28", "Kisumu"),
+]
+
+# Depots — (asset_id, town_name)
+# FIX Issue 4: removed unused cap/tanks tuple values — not in dim_asset schema
+DEPOT_TOWNS = [
+    ("DEP-01", "Mombasa"),          # Kipevu / PS14
+    ("DEP-02", "Nairobi Terminal"), # Embakasi / PS10
+]
+
+def _haversine_km(p1: tuple, p2: tuple) -> float:
+    """Haversine distance in km between two (lat, lon) points."""
+    lat1, lon1 = p1
+    lat2, lon2 = p2
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _jitter_km(lat: float, lon: float, km: float) -> tuple[float, float]:
+    """Apply uniform random jitter of up to `km` kilometres."""
+    d_lat = (km / 111.0) * random.uniform(-1, 1)
+    d_lon = (km / (111.0 * math.cos(math.radians(lat)))) * random.uniform(-1, 1)
+    return lat + d_lat, lon + d_lon
+
+
+def _build_wp_lookup() -> dict[str, tuple[float, float]]:
+    """
+    Build a town-name → (lat, lon) lookup from all corridor chains.
+    Later chains overwrite duplicates (all three chains share Nairobi Terminal
+    and Sinendet, which have identical coords, so this is safe).
+    """
+    lookup: dict[str, tuple[float, float]] = {}
+    for _, chain in ALL_CORRIDOR_CHAINS:
+        for name, lat, lon, _ in chain:
+            lookup[name] = (lat, lon)
+    return lookup
+
+
+def generate_corridor_assets() -> list[dict]:
+    """
+    Generate the fine-grained corridor geo layer across all three chains:
+      - Monitoring points every ~5km along each segment
+      - Named pump stations at publicly-listed KPC towns
+      - Depots at Mombasa (Kipevu) and Nairobi Terminal
+
+    ~1% of monitoring points get corrupted coordinates injected (same
+    convention as other datasets so validate.py is exercised on this layer).
+
+    FIX (Issue 5/10): coordinate corruption is applied FIRST, then the separate
+    ~1% missing-latitude injection runs independently. Both are logged to
+    ground_truth so the pipeline can be tested against both failure modes.
+    The two injections are independent — double-corruption on the same row
+    is intentional (real data can have multiple issues on one record).
+    """
+    assets = []
+    wp_lookup = _build_wp_lookup()
+    mp_id = 1
+
+    for chain_name, chain in ALL_CORRIDOR_CHAINS:
+        cum_km = 0.0
+        for i in range(len(chain) - 1):
+            name1, lat1, lon1, _ = chain[i]
+            name2, lat2, lon2, _ = chain[i + 1]
+
+            # Skip duplicate shared origin when western/kisumu chains start
+            # (Nairobi Terminal and Sinendet appear in multiple chains)
+            seg_km = _haversine_km((lat1, lon1), (lat2, lon2))
+            n_steps = max(int(seg_km / 5), 1)  # ~1 monitoring point per 5km
+
+            for j in range(n_steps + 1):
+                if i > 0 and j == 0:
+                    continue  # skip duplicate at shared waypoint boundary
+
+                t = j / n_steps if n_steps else 0
+                lat = lat1 + (lat2 - lat1) * t
+                lon = lon1 + (lon2 - lon1) * t
+                jlat, jlon = _jitter_km(lat, lon, km=0.8)
+                cum_km += seg_km / n_steps if n_steps else 0
+
+                asset_id = f"MP-{mp_id:04d}"
+                row = {
+                    "asset_id": asset_id,
+                    "asset_type": "monitoring_point",
+                    "nearest_site_code": "",
+                    "segment": f"{name1}-{name2}",
+                    "chainage_km_approx": round(cum_km, 1),
+                    "latitude": round(jlat, 6),
+                    "longitude": round(jlon, 6),
+                    "flood_landslide_risk_zone": FLOOD_RISK_SEGMENTS.get(f"{name1}-{name2}", "low"),
+                    "sensor_suite": "pressure,flow,fiber_acoustic,rainfall",
+                    "corridor_chain": chain_name,
+                }
+
+                # FIX Issue 10: corrupt coordinates first, then blank-latitude injection
+                row = inject_invalid_coordinates(row, asset_id, "corridor_assets")
+
+                # ~1% missing latitude (separate from coordinate corruption above)
+                if random.random() < 0.01:
+                    row["latitude"] = ""
+                    log_issue(asset_id, "corridor_assets", "missing_required_field:latitude",
+                              f"latitude blanked on {asset_id}")
+
+                assets.append(row)
+                mp_id += 1
+
+    # Pump stations — jitter 2km from town centre
+    for pid, town in PUMP_STATION_TOWNS:
+        if town not in wp_lookup:
+            # Safety guard: skip if town somehow missing from lookup
+            continue
+        lat, lon = wp_lookup[town]
+        jlat, jlon = _jitter_km(lat, lon, km=2.0)
+        nearest_site = next(
+            (code for _, chain in ALL_CORRIDOR_CHAINS for name, _, _, code in chain if name == town and code),
+            ""
+        )
+        assets.append({
+            "asset_id": pid,
+            "asset_type": "pump_station",
+            "nearest_site_code": nearest_site,
+            "segment": town,
+            "chainage_km_approx": "",
+            "latitude": round(jlat, 6),
+            "longitude": round(jlon, 6),
+            "flood_landslide_risk_zone": "",
+            "sensor_suite": "pressure,flow,vibration",
+            "corridor_chain": "named_station",
+        })
+
+    # Depots — jitter 3km from town centre
+    for did, town in DEPOT_TOWNS:
+        if town not in wp_lookup:
+            continue
+        lat, lon = wp_lookup[town]
+        jlat, jlon = _jitter_km(lat, lon, km=3.0)
+        nearest_site = next(
+            (code for _, chain in ALL_CORRIDOR_CHAINS for name, _, _, code in chain if name == town and code),
+            ""
+        )
+        assets.append({
+            "asset_id": did,
+            "asset_type": "depot",
+            "nearest_site_code": nearest_site,
+            "segment": town,
+            "chainage_km_approx": "",
+            "latitude": round(jlat, 6),
+            "longitude": round(jlon, 6),
+            "flood_landslide_risk_zone": "",
+            "sensor_suite": "level,fire_detection",
+            "corridor_chain": "named_station",
+        })
+
+    return assets
+
+def generate_corridor_telemetry(assets: list[dict], hours: int = 48, interval_min: int = 30) -> list[dict]:
+    """
+    48h / 30-min synthetic time series for every corridor asset that carries
+    sensors (monitoring_point + pump_station). Adds rainfall_mm alongside
+    the existing pressure/flow/temperature vocabulary — additive, not a change
+    to the frozen fact_telemetry columns.
+
+    Three demo anomaly events are injected deterministically (given SEED):
+      - A slow leak (pressure/flow ramp-down) at one monitoring point
+      - A flood-risk rainfall spike in a high_flood zone
+      - A landslide-precursor rainfall spike near the Naivasha-Nakuru segment
+
+    FIX (Issue 3): All three anomaly target lookups now use a safe default
+    (None / fallback index) so a missing segment never raises StopIteration.
+    FIX (Issue 7): Issues logged with dataset="corridor_telemetry" so the
+    dataset_counts breakdown in write_messiness_spec() is accurate.
+    """
+    sensor_assets = [a for a in assets if a["asset_type"] in ("monitoring_point", "pump_station")]
+    monitoring_points = [a for a in assets if a["asset_type"] == "monitoring_point"]
+
+    # FIX Issue 3: safe defaults — fall back to a fixed index if target not found
+    fallback_mp = monitoring_points[len(monitoring_points) // 3] if monitoring_points else None
+
+    leak_target = next(
+        (a["asset_id"] for a in monitoring_points
+         if a.get("flood_landslide_risk_zone") == "low" and a.get("corridor_chain") == "main"),
+        fallback_mp["asset_id"] if fallback_mp else None
+    )
+    flood_target = next(
+        (a["asset_id"] for a in monitoring_points if a.get("flood_landslide_risk_zone") == "high_flood"),
+        fallback_mp["asset_id"] if fallback_mp else None
+    )
+    # Landslide target: prefer Naivasha-Nakuru segment (escarpment), fall back to any high_flood
+    landslide_target = next(
+        (a["asset_id"] for a in monitoring_points if a.get("segment") == "Naivasha-Nakuru"),
+        next(
+            (a["asset_id"] for a in monitoring_points if a.get("flood_landslide_risk_zone") == "high_flood"),
+            fallback_mp["asset_id"] if fallback_mp else None
+        )
+    )
+
+    start = TODAY - timedelta(hours=hours)
+    n_steps = int(hours * 60 / interval_min)
+    rows = []
+    reading_counter = 1
+
+    for asset in sensor_assets:
+        aid = asset["asset_id"]
+        base_pressure = random.uniform(200, 550)
+        base_flow = random.uniform(1500, 4500)
+
+        for step in range(n_steps):
+            ts = start + timedelta(minutes=interval_min * step)
+            pressure = round(float(np.clip(np.random.normal(base_pressure, 15), 0, 1000)), 1)
+            flow = round(float(np.clip(np.random.normal(base_flow, 200), 0, 6000)), 1)
+            temperature = round(float(np.clip(np.random.normal(28, 5), 10, 50)), 1)
+            rainfall = max(0.0, round(float(np.random.normal(0.3, 0.6)), 2))
+            if 14 <= ts.hour <= 18:
+                rainfall += max(0.0, round(float(np.random.normal(1.2, 1.0)), 2))
+            status = "normal"
+            reading_id = f"GTL-{reading_counter:06d}"
+
+            # Demo anomaly 1: slow leak — pressure/flow ramp-down
+            if aid == leak_target and 40 <= step <= 48:
+                frac = (step - 40) / 8
+                pressure = round(max(0.0, pressure - 200 * frac), 1)
+                flow = round(max(0.0, flow - 900 * frac), 1)
+                status = "warning" if step < 46 else "critical"
+                log_issue(reading_id, "corridor_telemetry", "pressure_spike",
+                          f"simulated leak ramp-down at {aid}, step={step}")
+
+            # Demo anomaly 2: flood-risk rainfall spike
+            if aid == flood_target and 20 <= step <= 28:
+                rainfall += round(random.uniform(8, 15), 2)
+                status = "advisory" if rainfall < 15 else "warning"
+
+            # Demo anomaly 3: landslide-precursor rainfall spike (Naivasha-Nakuru escarpment)
+            if aid == landslide_target and 60 <= step <= 68:
+                rainfall += round(random.uniform(6, 11), 2)
+                status = "warning"
+
+            rows.append({
+                "reading_id": reading_id,
+                "asset_id": aid,
+                "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
+                "pressure_psi": pressure,
+                "flow_rate_bph": flow,
+                "temperature_celsius": temperature,
+                "rainfall_mm": rainfall,
+                "status": status,
+            })
+            reading_counter += 1
+
+    return rows
 
 # ============================================================================
 # Write helpers
@@ -428,7 +961,7 @@ def generate_audits(n: int) -> list[dict]:
 def write_csv(rows: list[dict], path: Path, fieldnames: list[str]):
     """Write a list of dicts to CSV."""
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
     print(f"  wrote {len(rows):>6} rows -> {path}")
@@ -441,24 +974,23 @@ def main():
     print(f"Sentinel Data Generator — seed={SEED}, anchor_date={TODAY.date()}")
     print("=" * 60)
 
-    # --- dim_site (reference table) ---
+    # --- dim_site (reference table — frozen, 6 rows) ---
     print("\n1. Generating dim_site.csv ...")
     site_fields = ["site_code", "site_name", "region", "asset_type"]
     site_rows = [{k: s[k] for k in site_fields} for s in SITES]
     write_csv(site_rows, OUT_DIR / "dim_site.csv", site_fields)
 
     # --- incidents_raw.csv ---
-    # Target: ~6000 rows base + duplicates (scaled for 15k+ total)
     print("\n2. Generating incidents_raw.csv (~6000 rows + duplicates) ...")
     incidents = generate_incidents(6000)
     incident_fields = [
-        "incident_id", "site", "incident_date", "incident_type", "severity",
-        "compliance_score", "description", "root_cause", "response_time_hours", "status",
+        "incident_id", "site", "latitude", "longitude", "incident_date",
+        "incident_type", "severity", "compliance_score", "description",
+        "root_cause", "response_time_hours", "status",
     ]
     write_csv(incidents, OUT_DIR / "incidents_raw.csv", incident_fields)
 
     # --- audits_raw.csv ---
-    # Target: ~9500 rows base + duplicates (scaled for 15k+ total)
     print("\n3. Generating audits_raw.csv (~9500 rows + duplicates) ...")
     audits = generate_audits(9500)
     audit_fields = [
@@ -467,18 +999,56 @@ def main():
     ]
     write_csv(audits, OUT_DIR / "audits_raw.csv", audit_fields)
 
+    # --- pipeline_telemetry (two batches — frozen schema) ---
+    print("\n4. Generating pipeline_telemetry_batch1.csv (4300 rows) ...")
+    telemetry_batch1 = generate_telemetry(4300)
+    telemetry_fields = [
+        "reading_id", "timestamp", "site", "pipeline_section",
+        "pressure_psi", "flow_rate_bph", "temperature_celsius",
+        "valve_status", "sensor_id",
+    ]
+    write_csv(telemetry_batch1, OUT_DIR / "pipeline_telemetry_batch1.csv", telemetry_fields)
+
+    print("\n5. Generating pipeline_telemetry_batch2.csv (700 rows) ...")
+    telemetry_batch2 = generate_telemetry(700)
+    write_csv(telemetry_batch2, OUT_DIR / "pipeline_telemetry_batch2.csv", telemetry_fields)
+
+    # --- dim_asset.csv (corridor geo layer — main + western + kisumu) ---
+    print("\n6. Generating dim_asset.csv (corridor monitoring points, pump stations, depots) ...")
+    corridor_assets = generate_corridor_assets()
+    asset_fields = [
+        "asset_id", "asset_type", "nearest_site_code", "segment",
+        "chainage_km_approx", "latitude", "longitude",
+        "flood_landslide_risk_zone", "sensor_suite", "corridor_chain",
+    ]
+    write_csv(corridor_assets, OUT_DIR / "dim_asset.csv", asset_fields)
+
+    # --- corridor_telemetry.csv (48h/30min synthetic time series) ---
+    print("\n7. Generating corridor_telemetry.csv (48h geo-tagged sensor readings) ...")
+    corridor_telemetry = generate_corridor_telemetry(corridor_assets)
+    corridor_telemetry_fields = [
+        "reading_id", "asset_id", "timestamp", "pressure_psi",
+        "flow_rate_bph", "temperature_celsius", "rainfall_mm", "status",
+    ]
+    write_csv(corridor_telemetry, OUT_DIR / "corridor_telemetry.csv", corridor_telemetry_fields)
+
     # --- Ground truth issues log ---
-    print("\n4. Writing ground_truth_issues.csv ...")
+    print("\n8. Writing ground_truth_issues.csv ...")
     gt_path = OUT_DIR / "ground_truth_issues.csv"
     gt_fields = ["record_id", "dataset", "issue_type", "detail"]
     write_csv(ground_truth, gt_path, gt_fields)
 
-    # --- Data generation notes (messiness spec) ---
-    print("\n5. Writing docs/data_generation_notes.md ...")
-    write_messiness_spec(incidents, audits)
+    # --- Data generation notes ---
+    print("\n9. Writing docs/data_generation_notes.md ...")
+    write_messiness_spec(incidents, audits, telemetry_batch1 + telemetry_batch2,
+                         corridor_assets, corridor_telemetry)
 
     # --- Summary ---
-    total_rows = len(incidents) + len(audits) + len(site_rows)
+    total_rows = (
+        len(incidents) + len(audits) + len(site_rows)
+        + len(telemetry_batch1) + len(telemetry_batch2)
+        + len(corridor_assets) + len(corridor_telemetry)
+    )
     print(f"\n{'=' * 60}")
     print(f"DONE. Total rows: {total_rows} | Issues injected: {len(ground_truth)}")
     print(f"Files written to: {OUT_DIR.resolve()}")
@@ -486,17 +1056,36 @@ def main():
     for s in SITES:
         if s["risk_profile"] == "high":
             print(f"  {s['site_code']} — {s['site_name']} ({s['region']})")
+    print(f"\nCorridor chains generated:")
+    for chain_name, chain in ALL_CORRIDOR_CHAINS:
+        print(f"  {chain_name}: {chain[0][0]} → {chain[-1][0]}")
 
 
-def write_messiness_spec(incidents: list, audits: list):
-    """Write the human-readable messiness specification to docs/."""
+def write_messiness_spec(incidents: list, audits: list, telemetry: list,
+                         corridor_assets: list = None, corridor_telemetry: list = None):
+    """
+    Write the human-readable messiness specification to docs/.
+    FIX Issue 4: summary line now includes corridor row counts.
+    FIX Issue 7/8: dataset_counts printout covers corridor datasets.
+    """
     docs_dir = Path("docs")
     docs_dir.mkdir(exist_ok=True)
+
+    corridor_assets = corridor_assets or []
+    corridor_telemetry = corridor_telemetry or []
 
     issue_counts = Counter(g["issue_type"].split(":")[0] for g in ground_truth)
     dataset_counts = Counter(g["dataset"] for g in ground_truth)
 
-    total_rows = len(incidents) + len(audits)
+    total_rows = (len(incidents) + len(audits) + len(telemetry)
+                  + len(corridor_assets) + len(corridor_telemetry))
+
+    # FIX Issue 4: parenthetical now lists all five dataset row counts
+    row_breakdown = (
+        f"incidents: {len(incidents)}, audits: {len(audits)}, "
+        f"telemetry: {len(telemetry)}, corridor_assets: {len(corridor_assets)}, "
+        f"corridor_telemetry: {len(corridor_telemetry)}"
+    )
 
     lines = [
         "# Data Generation Notes — Sentinel Stage 1",
@@ -504,20 +1093,32 @@ def write_messiness_spec(incidents: list, audits: list):
         "## Overview",
         "",
         f"Generated with **seed `{SEED}`** on anchor date `{TODAY.date()}` for full reproducibility.",
-        f"Running `python3 src/generate_data.py` twice produces identical output.",
+        "Running `python3 src/generate_data.py` twice produces identical output.",
         "",
-        f"- **Total data rows:** {total_rows} (incidents: {len(incidents)}, audits: {len(audits)})",
-        f"- **Reference rows:** 6 sites (dim_site.csv)",
+        f"- **Total data rows:** {total_rows} ({row_breakdown})",
+        "- **Reference rows:** 6 sites (dim_site.csv)",
         f"- **Total issues deliberately injected:** {len(ground_truth)}",
         "",
         "## Files Produced",
         "",
         "| File | Description | Rows |",
         "|------|-------------|------|",
-        f"| `dim_site.csv` | 6 KPC-modeled pipeline sites | 6 |",
+        f"| `dim_site.csv` | 6 KPC-modeled pipeline sites (frozen join key) | 6 |",
         f"| `incidents_raw.csv` | Environmental incident records (messy) | {len(incidents)} |",
         f"| `audits_raw.csv` | Compliance audit records (messy) | {len(audits)} |",
+        f"| `pipeline_telemetry_batch1.csv` | Pipeline sensor readings — batch 1 (messy) | {min(len(telemetry), 4300)} |",
+        f"| `pipeline_telemetry_batch2.csv` | Pipeline sensor readings — batch 2 (messy) | {max(0, len(telemetry) - 4300)} |",
+        f"| `dim_asset.csv` | Corridor geo layer: main line + western spur + Kisumu branch | {len(corridor_assets)} |",
+        f"| `corridor_telemetry.csv` | 48h/30min geo-tagged sensor readings incl. rainfall | {len(corridor_telemetry)} |",
         f"| `ground_truth_issues.csv` | Answer key: every injected issue | {len(ground_truth)} |",
+        "",
+        "## Corridor Chains",
+        "",
+        "| Chain | Route | Covers |",
+        "|-------|-------|--------|",
+        "| main | Mombasa → Nairobi Terminal | SITE-002, SITE-003 |",
+        "| western | Nairobi Terminal → Nakuru → Sinendet → Eldoret | SITE-001, SITE-004, SITE-005, SITE-006 |",
+        "| kisumu | Sinendet → Kisumu | SITE-006 (branch origin) |",
         "",
         "## Deliberate Signal (for Stage 2 risk model)",
         "",
@@ -534,34 +1135,80 @@ def write_messiness_spec(incidents: list, audits: list):
         "This models the pattern documented in the Kimeu v. KPC judgment:",
         "weak audit follow-through precedes environmental incidents.",
         "",
+        "SITE-006 (Sinendet) now also has corridor coverage via the western spur,",
+        "and is the branch origin of the Sinendet-Kisumu chain — so its high-risk",
+        "pattern is visible in both the incident/audit tables AND the corridor map.",
+        "",
+        "## Datasets",
+        "",
+        "### Environmental Incidents (`incidents_raw.csv`)",
+        "",
+        "Spills, leaks, and fires — the **outcome** layer.",
+        "Includes latitude/longitude assigned from canonical site coordinates with ±0.01–0.03° jitter.",
+        "",
+        "### Compliance Audits (`audits_raw.csv`)",
+        "",
+        "Regulatory inspection findings — the **oversight gap** layer.",
+        "",
+        "### Pipeline Telemetry (batches 1 & 2)",
+        "",
+        "Continuous sensor readings (pressure, flow, temperature) — the **leading indicator** layer.",
+        "5000 total rows. Covers the previous 90 days. Pressure spikes cluster in groups of 3-5 readings.",
+        "",
+        "### Corridor Geo Layer (`dim_asset.csv`, `corridor_telemetry.csv`)",
+        "",
+        "Additive — not a replacement for dim_site/fact_incidents/fact_audits/fact_telemetry.",
+        "",
+        "- **`dim_asset.csv`** — monitoring points every ~5km along three chains (main + western + kisumu),",
+        "  plus named pump stations and depots. `nearest_site_code` links back to dim_site where a real",
+        "  site sits on the route. The `corridor_chain` column identifies which chain each row belongs to.",
+        "- **`corridor_telemetry.csv`** — 48h at 30-min intervals for every monitoring_point and pump_station.",
+        "  Adds `rainfall_mm` as a new leading-indicator field not present in pipeline_telemetry_batch*.csv.",
+        "  Three demo anomaly events seeded deterministically: slow leak (pressure/flow ramp-down),",
+        "  flood-risk rainfall spike, landslide-precursor rainfall spike (Naivasha-Nakuru escarpment).",
+        "- Town-level names are from KPC's public station list. Coordinates and readings are simulated —",
+        "  jittered from public town-centre reference points, not real asset siting or SCADA data.",
+        "",
+        "### Shared Join Key: `site` (core datasets) / `asset_id` (corridor layer)",
+        "",
+        "Core datasets (incidents/audits/telemetry) join through `dim_site.site_id`.",
+        "Corridor layer joins through `dim_asset.asset_id` and links back via `nearest_site_code`.",
+        "",
         "## Messiness Injected",
         "",
-        "| Issue Type | Count | Expected Pipeline Outcome |",
-        "|-----------|-------|--------------------------|",
+        "| Issue Type | Count | Datasets | Expected Pipeline Outcome |",
+        "|-----------|-------|----------|--------------------------|",
     ]
 
+    # FIX Issue 8: corridor datasets included in outcome descriptions
     issue_outcomes = {
-        "dirty_label": "Corrected (auto-normalized)",
-        "mixed_date_format": "Corrected (standardized to ISO 8601)",
-        "missing_required_field": "Review (held for human sign-off)",
-        "missing_optional_field": "Trusted (not an error)",
-        "future_date": "Rejected (physically impossible)",
-        "out_of_range": "Rejected or Corrected (clamp if recoverable)",
-        "closed_before_inspection": "Rejected (logical impossibility)",
-        "duplicate_id": "Rejected (uniqueness violation)",
-        "contradiction": "Rejected or Review",
+        "dirty_label":            ("incidents, telemetry", "Corrected (auto-normalized)"),
+        "mixed_date_format":      ("incidents, audits", "Corrected (standardized to ISO 8601)"),
+        "missing_required_field": ("incidents, corridor_assets", "Review (held for human sign-off)"),
+        "missing_optional_field": ("incidents", "Trusted (not an error)"),
+        "future_date":            ("incidents, audits", "Rejected (physically impossible)"),
+        "out_of_range":           ("incidents, audits", "Rejected or Corrected (clamp if recoverable)"),
+        "closed_before_inspection": ("audits", "Rejected (logical impossibility)"),
+        "duplicate_id":           ("incidents, audits, telemetry", "Rejected (uniqueness violation)"),
+        "invalid_coordinates":    ("incidents, corridor_assets", "Rejected (physically impossible coordinates)"),
+        "sensor_dropout":         ("telemetry", "Corrected/Review (null sensor reading)"),
+        "pressure_spike":         ("telemetry, corridor_telemetry", "Review (potential leading indicator for leaks)"),
     }
 
     for issue_type, count in issue_counts.most_common():
-        outcome = issue_outcomes.get(issue_type, "TBD")
-        lines.append(f"| `{issue_type}` | {count} | {outcome} |")
+        datasets, outcome = issue_outcomes.get(issue_type, ("TBD", "TBD"))
+        lines.append(f"| `{issue_type}` | {count} | {datasets} | {outcome} |")
 
+    # FIX Issue 5: all five dataset labels in the breakdown
     lines += [
         "",
         "## Issues by Dataset",
         "",
         f"- incidents: {dataset_counts.get('incidents', 0)}",
         f"- audits: {dataset_counts.get('audits', 0)}",
+        f"- telemetry: {dataset_counts.get('telemetry', 0)}",
+        f"- corridor_assets: {dataset_counts.get('corridor_assets', 0)}",
+        f"- corridor_telemetry: {dataset_counts.get('corridor_telemetry', 0)}",
         "",
         "## How to Compute Detection Rate",
         "",
@@ -576,11 +1223,21 @@ def write_messiness_spec(incidents: list, audits: list):
         "This is the honest, quantified ROI evidence for Stage 1.",
         "Put this number in the memo and the pitch.",
         "",
-        "## Known Limitation",
+        "## Known Limitations",
         "",
-        "Some rows have multiple issues (e.g., dirty severity AND future date on the same",
-        "record). This is intentional — real data isn't one-problem-per-row. Compute recall",
-        "**per issue type**, not per row.",
+        "- Some rows have multiple issues (e.g., dirty severity AND future date on the same",
+        "  record). This is intentional — real data isn't one-problem-per-row. Compute recall",
+        "  **per issue type**, not per row.",
+        "- Pressure spikes are clustered by index position rather than strictly by site+time",
+        "  adjacency. This is a simplification; real spikes would be sensor-specific.",
+        "- Coordinate jitter is uniform random rather than GPS-realistic noise patterns.",
+        "- Telemetry timestamps are uniformly distributed; real SCADA systems have",
+        "  fixed polling intervals with occasional gaps.",
+        "- Corridor coordinates are jittered from public town-centre reference points —",
+        "  they are not real asset coordinates or real SCADA data.",
+        "- ~1% of corridor monitoring points may have both invalid_coordinates AND",
+        "  missing_required_field:latitude injected. Both are logged to ground_truth.",
+        "  This is intentional — the pipeline must handle multi-issue rows.",
     ]
 
     spec_path = docs_dir / "data_generation_notes.md"

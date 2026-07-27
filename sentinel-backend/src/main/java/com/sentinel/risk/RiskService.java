@@ -4,7 +4,9 @@ import com.sentinel.common.dto.SiteDetailDto;
 import com.sentinel.common.dto.SiteRiskSummaryDto;
 import com.sentinel.common.dto.IncidentDto;
 import com.sentinel.common.dto.AuditDto;
+import com.sentinel.common.dto.TelemetryReadingDto;
 import com.sentinel.site.*;
+import com.sentinel.telemetry.TelemetryService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
  * - Severity mix (Critical/High incidents weighted more)
  * - Days since last audit
  * - Corrected/rejected rate for the site's records
+ * - Pressure spike count from telemetry (leading indicator)
  *
  * Each input is judge-explainable and traceable back to Stage 1 data.
  */
@@ -30,16 +33,29 @@ public class RiskService {
 
     private static final double GATE_THRESHOLD = 0.90;
 
+    // Canonical site coordinates for the heatmap
+    private static final Map<String, double[]> SITE_COORDS = Map.of(
+        "SITE-001", new double[]{-1.30, 36.85},  // Nairobi Terminal
+        "SITE-002", new double[]{-4.05, 39.65},  // Mombasa Terminal
+        "SITE-003", new double[]{-0.30, 36.07},  // Makueni Pump Station
+        "SITE-004", new double[]{-0.30, 36.07},  // Nakuru Depot
+        "SITE-005", new double[]{0.52, 35.27},   // Eldoret Depot
+        "SITE-006", new double[]{0.05, 35.45}    // Sinendet Pump Station
+    );
+
     private final SiteRepository siteRepository;
     private final IncidentRepository incidentRepository;
     private final AuditRepository auditRepository;
+    private final TelemetryService telemetryService;
 
     public RiskService(SiteRepository siteRepository,
                        IncidentRepository incidentRepository,
-                       AuditRepository auditRepository) {
+                       AuditRepository auditRepository,
+                       TelemetryService telemetryService) {
         this.siteRepository = siteRepository;
         this.incidentRepository = incidentRepository;
         this.auditRepository = auditRepository;
+        this.telemetryService = telemetryService;
     }
 
     public List<SiteRiskSummaryDto> computeRiskSummary() {
@@ -84,15 +100,23 @@ public class RiskService {
             double correctedRate = total > 0 ? (double) corrected / total : 0.0;
             double rejectedRate = total > 0 ? (double) rejected / total : 0.0;
 
-            int riskScore = computeRiskScore(incidents, decisions, daysSinceAudit, rejectedRate);
+            int pressureSpikes = telemetryService.getPressureSpikeCountForSite(siteId);
+
+            int riskScore = computeRiskScore(incidents, decisions, daysSinceAudit, rejectedRate, pressureSpikes);
             String severityBand = scoreToSeverityBand(riskScore);
+
+            // Get canonical coordinates
+            double[] coords = SITE_COORDS.getOrDefault(siteId, new double[]{0.0, 0.0});
 
             return SiteRiskSummaryDto.builder()
                     .siteId(siteId)
                     .siteName(site.getSiteName())
+                    .latitude(coords[0])
+                    .longitude(coords[1])
                     .riskScore(riskScore)
                     .severityBand(severityBand)
                     .incidentCount((int) incidents)
+                    .pressureSpikeCount(pressureSpikes)
                     .lastAuditDate(lastAudit != null ? lastAudit.toLocalDate().toString() : null)
                     .daysSinceLastAudit(daysSinceAudit)
                     .correctedRate(Math.round(correctedRate * 100.0) / 100.0)
@@ -107,6 +131,7 @@ public class RiskService {
 
         List<IncidentEntity> incidents = incidentRepository.findBySiteIdOrderByIncidentDateDesc(siteId);
         List<AuditEntity> audits = auditRepository.findBySiteIdOrderByInspectionDateDesc(siteId);
+        List<TelemetryReadingDto> telemetryReadings = telemetryService.getSiteReadings(siteId);
 
         // Compute risk score for this site
         Map<String, Long> decisions = incidents.stream()
@@ -120,11 +145,17 @@ public class RiskService {
                 ? (int) ChronoUnit.DAYS.between(lastAudit.toLocalDate(), LocalDate.now())
                 : 30;
 
-        int riskScore = computeRiskScore(incidents.size(), decisions, daysSinceAudit, rejectedRate);
+        int pressureSpikes = telemetryService.getPressureSpikeCountForSite(siteId);
+        int riskScore = computeRiskScore(incidents.size(), decisions, daysSinceAudit, rejectedRate, pressureSpikes);
+
+        // Get canonical coordinates
+        double[] coords = SITE_COORDS.getOrDefault(siteId, new double[]{0.0, 0.0});
 
         List<IncidentDto> incidentDtos = incidents.stream().map(i -> IncidentDto.builder()
                 .incidentId(i.getIncidentId())
                 .siteId(i.getSiteId())
+                .latitude(i.getLatitude())
+                .longitude(i.getLongitude())
                 .incidentDate(formatDate(i.getIncidentDate()))
                 .severity(i.getSeverity())
                 .description(i.getDescription())
@@ -150,24 +181,29 @@ public class RiskService {
                 .siteId(site.getSiteId())
                 .siteName(site.getSiteName())
                 .location(site.getLocation())
+                .latitude(coords[0])
+                .longitude(coords[1])
                 .riskScore(riskScore)
                 .severityBand(scoreToSeverityBand(riskScore))
+                .pressureSpikeCount(pressureSpikes)
                 .incidents(incidentDtos)
                 .audits(auditDtos)
+                .telemetryReadings(telemetryReadings)
                 .build();
     }
 
     /**
      * Rule-weighted risk score (0-100).
-     * Transparent inputs: incident frequency, severity mix, audit recency, rejection rate.
+     * Transparent inputs: incident frequency, severity mix, audit recency, rejection rate, pressure spikes.
      */
     private int computeRiskScore(long incidentCount, Map<String, Long> decisions,
-                                  int daysSinceAudit, double rejectedRate) {
+                                  int daysSinceAudit, double rejectedRate, int pressureSpikes) {
         // Component weights (sum to 1.0)
-        double incidentWeight = 0.30;
-        double severityWeight = 0.25;
-        double auditWeight = 0.20;
-        double rejectionWeight = 0.25;
+        double incidentWeight = 0.25;
+        double severityWeight = 0.20;
+        double auditWeight = 0.15;
+        double rejectionWeight = 0.20;
+        double telemetryWeight = 0.20;
 
         // Incident frequency score (0-100): more incidents = higher risk
         double incidentScore = Math.min(incidentCount * 7.0, 100.0);
@@ -185,10 +221,14 @@ public class RiskService {
         double rejectionScore = rejectedRate * 100.0 * 3.0; // amplify
         rejectionScore = Math.min(rejectionScore, 100.0);
 
+        // Telemetry: pressure spikes as leading indicator
+        double telemetryScore = Math.min(pressureSpikes * 20.0, 100.0);
+
         double composite = (incidentScore * incidentWeight)
                 + (severityScore * severityWeight)
                 + (auditScore * auditWeight)
-                + (rejectionScore * rejectionWeight);
+                + (rejectionScore * rejectionWeight)
+                + (telemetryScore * telemetryWeight);
 
         return (int) Math.min(Math.max(Math.round(composite), 0), 100);
     }

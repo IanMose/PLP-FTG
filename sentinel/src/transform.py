@@ -2,9 +2,10 @@
 Sentinel — Transform Module
 
 Responsible for:
-- Normalizing categorical text via lookup table (severity, status, etc.)
+- Normalizing categorical text via lookup table (severity, status, site, etc.)
 - Converting timestamps to ISO 8601 UTC
 - Deduplicating on natural key (keep latest by ingestion batch)
+- Handling incidents, audits, AND telemetry datasets
 """
 
 import argparse
@@ -59,6 +60,53 @@ STATUS_LOOKUP = {
     "pending": "Pending",
 }
 
+# Site name normalization — maps dirty variants back to canonical site codes
+SITE_LOOKUP = {
+    # Canonical (already correct)
+    "site-001": "SITE-001",
+    "site-002": "SITE-002",
+    "site-003": "SITE-003",
+    "site-004": "SITE-004",
+    "site-005": "SITE-005",
+    "site-006": "SITE-006",
+    # Dirty variants for SITE-001 (Nairobi Terminal)
+    "nairobi term": "SITE-001",
+    "nairobi terminal": "SITE-001",
+    "nrb terminal": "SITE-001",
+    "nairobi": "SITE-001",
+    "nairobi  terminal": "SITE-001",
+    # Dirty variants for SITE-002 (Mombasa Terminal)
+    "mombasa term": "SITE-002",
+    "mombasa terminal": "SITE-002",
+    "msa terminal": "SITE-002",
+    "mombasa": "SITE-002",
+    "mombasa  terminal": "SITE-002",
+    # Dirty variants for SITE-003 (Makueni Pump Station)
+    "makueni ps": "SITE-003",
+    "makueni pump": "SITE-003",
+    "makueni": "SITE-003",
+    "makueni  pump station": "SITE-003",
+    "makueni pump station": "SITE-003",
+    # Dirty variants for SITE-004 (Nakuru Depot)
+    "nakuru dep": "SITE-004",
+    "nakuru depot": "SITE-004",
+    "nkr depot": "SITE-004",
+    "nakuru": "SITE-004",
+    "nakuru  depot": "SITE-004",
+    # Dirty variants for SITE-005 (Eldoret Depot)
+    "eldoret dep": "SITE-005",
+    "eldoret depot": "SITE-005",
+    "eld depot": "SITE-005",
+    "eldoret": "SITE-005",
+    "eldoret  depot": "SITE-005",
+    # Dirty variants for SITE-006 (Sinendet Pump Station)
+    "sinendet ps": "SITE-006",
+    "sinendet pump": "SITE-006",
+    "sinendet": "SITE-006",
+    "sinendet  pump station": "SITE-006",
+    "sinendet pump station": "SITE-006",
+}
+
 
 def normalize_incident_type(value: str) -> str:
     """Normalize incident_type text via lookup table."""
@@ -88,6 +136,21 @@ def normalize_status(value: str) -> str:
     if normalized is None:
         return str(value).strip()
     return normalized
+
+
+def normalize_site(value: str) -> str:
+    """Normalize site labels back to canonical SITE-XXX codes."""
+    if pd.isna(value) or str(value).strip() == "":
+        return value
+    raw = str(value).strip()
+    # Already canonical?
+    if raw.upper().startswith("SITE-") and len(raw) == 8:
+        return raw.upper()
+    # Lookup by lowercased stripped value
+    normalized = SITE_LOOKUP.get(raw.lower())
+    if normalized is not None:
+        return normalized
+    return raw  # Return as-is if not in lookup; validation can flag it
 
 
 def normalize_text_column(series: pd.Series, lookup: dict) -> pd.Series:
@@ -125,7 +188,7 @@ def deduplicate(df: pd.DataFrame, natural_key: list[str], sort_col: str = "inges
 def transform(df: pd.DataFrame) -> pd.DataFrame:
     """
     Apply all transformations:
-    1. Normalize categorical text (severity, status, incident_type)
+    1. Normalize categorical text (severity, status, incident_type, site)
     2. Convert date columns to ISO 8601 UTC
     3. Deduplicate on natural key
     """
@@ -141,6 +204,10 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
     if "status" in df.columns:
         df["status"] = df["status"].apply(normalize_status)
 
+    # Normalize site labels across all dataset types
+    if "site" in df.columns:
+        df["site"] = df["site"].apply(normalize_site)
+
     # 2. Convert date/time columns to ISO 8601 UTC
     #    Skip internal columns (prefixed with _) added during ingestion
     date_columns = [
@@ -154,21 +221,37 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
 
     # 3. Deduplicate on natural key
     #    Handle combined datasets: split by ID type, dedup each, recombine
-    if "incident_id" in df.columns and "audit_id" in df.columns:
-        # Combined dataset — split, dedup each, recombine
-        incidents = df[df["incident_id"].notna() & (df["incident_id"] != "")].copy()
-        audits = df[df["audit_id"].notna() & (df["audit_id"] != "")].copy()
+    has_incident_col = "incident_id" in df.columns
+    has_audit_col = "audit_id" in df.columns
+    has_reading_col = "reading_id" in df.columns
 
-        if len(incidents) > 0:
-            incidents = deduplicate(incidents, natural_key=["incident_id"])
-        if len(audits) > 0:
-            audits = deduplicate(audits, natural_key=["audit_id"])
+    if has_incident_col or has_audit_col or has_reading_col:
+        frames = []
 
-        df = pd.concat([incidents, audits], ignore_index=True)
-    elif "incident_id" in df.columns:
-        df = deduplicate(df, natural_key=["incident_id"])
-    elif "audit_id" in df.columns:
-        df = deduplicate(df, natural_key=["audit_id"])
+        if has_reading_col:
+            telemetry = df[df["reading_id"].notna() & (df["reading_id"].astype(str) != "")].copy()
+            if len(telemetry) > 0:
+                telemetry = deduplicate(telemetry, natural_key=["reading_id"])
+                frames.append(telemetry)
+            # Remove telemetry rows from further processing
+            df = df[~(df["reading_id"].notna() & (df["reading_id"].astype(str) != ""))].copy()
+
+        if has_incident_col:
+            incidents = df[df["incident_id"].notna() & (df["incident_id"].astype(str) != "")].copy()
+            if len(incidents) > 0:
+                incidents = deduplicate(incidents, natural_key=["incident_id"])
+                frames.append(incidents)
+            # Remove incident rows from further processing
+            df = df[~(df["incident_id"].notna() & (df["incident_id"].astype(str) != ""))].copy()
+
+        if has_audit_col:
+            audits = df[df["audit_id"].notna() & (df["audit_id"].astype(str) != "")].copy()
+            if len(audits) > 0:
+                audits = deduplicate(audits, natural_key=["audit_id"])
+                frames.append(audits)
+
+        if frames:
+            df = pd.concat(frames, ignore_index=True)
 
     return df
 

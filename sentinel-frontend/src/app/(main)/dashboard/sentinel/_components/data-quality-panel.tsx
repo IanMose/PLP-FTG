@@ -93,10 +93,8 @@ export function DataQualityPanel({ summary, batches }: DataQualityPanelProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Distribution bar */}
         <QualityBar summary={summary} />
 
-        {/* Recent batches */}
         <div className="space-y-2">
           <h4 className="flex items-center gap-1.5 font-medium text-sm">
             <Database className="size-3.5" />
