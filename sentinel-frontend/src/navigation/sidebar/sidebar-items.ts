@@ -6,6 +6,7 @@ import {
   type LucideIcon,
   MapPin,
   ShieldAlert,
+  ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 
@@ -57,6 +58,18 @@ export const sidebarItems: NavGroup[] = [
         title: "Sentinel",
         url: "/dashboard/sentinel",
         icon: ShieldAlert,
+      },
+      {
+        id: "compliance",
+        title: "Compliance",
+        url: "/dashboard/compliance",
+        icon: ShieldCheck,
+      },
+      {
+        id: "compliance",
+        title: "Compliance",
+        url: "/dashboard/compliance",
+        icon: ShieldCheck,
       },
       {
         id: "alerts",
