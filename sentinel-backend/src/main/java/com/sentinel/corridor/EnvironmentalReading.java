@@ -25,7 +25,7 @@ import java.time.LocalDateTime;
 public class EnvironmentalReading {
 
     @Id
-    @Column(name = "reading_id")
+    @Column(name = "reading_id", length = 40)
     private String readingId;
 
     @Column(name = "asset_id")

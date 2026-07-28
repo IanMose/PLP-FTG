@@ -76,7 +76,8 @@ public class SecurityConfig {
                     "/api/corridor/**",
                     "/api/quality/**",
                     "/api/telemetry/**",
-                    "/api/ingestion/**"
+                    "/api/ingestion/**",
+                    "/api/config/**"
                 ).permitAll()
                 // User management requires Admin role
                 .requestMatchers("/api/users/**").hasAnyRole("ADMIN")
