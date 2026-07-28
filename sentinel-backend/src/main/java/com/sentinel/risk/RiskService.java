@@ -33,14 +33,17 @@ public class RiskService {
 
     private static final double GATE_THRESHOLD = 0.90;
 
-    // Canonical site coordinates for the heatmap
+    // Canonical site coordinates for the heatmap.
+    // Keys are lowercase to match dim_site PKs (site-001 not SITE-001).
+    // Coordinates are public town-centre references for the KPC operational facilities.
     private static final Map<String, double[]> SITE_COORDS = Map.of(
-        "SITE-001", new double[]{-1.30, 36.85},  // Nairobi Terminal
-        "SITE-002", new double[]{-4.05, 39.65},  // Mombasa Terminal
-        "SITE-003", new double[]{-0.30, 36.07},  // Makueni Pump Station
-        "SITE-004", new double[]{-0.30, 36.07},  // Nakuru Depot
-        "SITE-005", new double[]{0.52, 35.27},   // Eldoret Depot
-        "SITE-006", new double[]{0.05, 35.45}    // Sinendet Pump Station
+        "site-001", new double[]{-1.292,  36.822},  // Nairobi Terminal (PS10 / Embakasi)
+        "site-002", new double[]{-4.049,  39.674},  // Mombasa Terminal (Kipevu / PS14 / KOSF)
+        "site-003", new double[]{-2.283,  37.833},  // Makueni Pipeline Section (Thange / Kibwezi area)
+        "site-004", new double[]{-0.303,  36.080},  // Nakuru Depot (PS25)
+        "site-005", new double[]{ 0.517,  35.268},  // Eldoret Terminal (PS27)
+        "site-006", new double[]{ 0.043,  35.451},  // Sinendet Pump Station (PS26)
+        "site-007", new double[]{-0.102,  34.762}   // Kisumu Terminal (PS28)
     );
 
     private final SiteRepository siteRepository;

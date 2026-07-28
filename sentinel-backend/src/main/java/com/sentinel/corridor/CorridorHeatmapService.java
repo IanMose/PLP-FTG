@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -26,34 +25,48 @@ import java.util.stream.Collectors;
  *      reuse RiskService.getSiteRiskScore() — normalised from 0-100 to 0-1.
  *      If there is no linked site (most corridor assets) this component is 0.
  *
- * Keeping this transparent and judge-explainable — same principle as the
- * site-level risk formula in RiskService.
+ * Performance:
+ *   - Previously fired one SELECT per asset for the latest environmental status
+ *     (~160 queries per heatmap request). Now resolved with a single bulk query
+ *     (findLatestPerAsset) that returns one row per asset in one round trip.
+ *   - siteScores are pre-fetched once from RiskService and looked up in-memory.
  */
 @Service
 @RequiredArgsConstructor
 public class CorridorHeatmapService {
 
-    private final AssetRepository assetRepository;
+    private final AssetRepository                assetRepository;
     private final EnvironmentalReadingRepository readingRepository;
-    private final RiskService riskService;
+    private final RiskService                    riskService;
 
-    // Pre-fetch site risk scores once and cache for the duration of the request
-    // (computeRiskSummary queries the DB; don't call it per-asset)
     public List<HeatPoint> getRiskHeatmap() {
-        // Build a siteId → normalised score lookup (0.0–1.0) from the existing service
+        // 1 query — site risk scores (fires 4 DB queries inside computeRiskSummary)
         Map<String, Double> siteScores = riskService.computeRiskSummary().stream()
                 .collect(Collectors.toMap(
                         s -> s.getSiteId(),
                         s -> s.getRiskScore() / 100.0
                 ));
 
+        // 1 query — latest environmental status for ALL assets at once.
+        // Replaces the previous per-asset findLatestByAssetId() loop (~160 queries).
+        Map<String, Double> statusScores = readingRepository.findLatestPerAsset().stream()
+                .collect(Collectors.toMap(
+                        EnvironmentalReading::getAssetId,
+                        r -> statusToScore(r.getStatus()),
+                        // If two readings share the exact same max timestamp, keep the higher score
+                        Math::max
+                ));
+
+        // 1 query — all assets
         return assetRepository.findAll().stream()
-                .map(asset -> toHeatPoint(asset, siteScores))
+                .map(asset -> toHeatPoint(asset, siteScores, statusScores))
                 .toList();
     }
 
-    private HeatPoint toHeatPoint(Asset asset, Map<String, Double> siteScores) {
-        double weight = computeWeight(asset, siteScores);
+    private HeatPoint toHeatPoint(Asset asset,
+                                  Map<String, Double> siteScores,
+                                  Map<String, Double> statusScores) {
+        double weight = computeWeight(asset, siteScores, statusScores);
         return new HeatPoint(
                 asset.getAssetId(),
                 asset.getLatitude(),
@@ -63,19 +76,17 @@ public class CorridorHeatmapService {
         );
     }
 
-    /**
-     * Three-component weight, fully named and traceable.
-     */
-    double computeWeight(Asset asset, Map<String, Double> siteScores) {
+    double computeWeight(Asset asset,
+                         Map<String, Double> siteScores,
+                         Map<String, Double> statusScores) {
         double floodZoneScore = floodZoneScore(asset.getFloodLandslideRiskZone());
-        double statusScore    = latestStatusScore(asset.getAssetId());
+        double statusScore    = statusScores.getOrDefault(asset.getAssetId(), 0.10); // no data → normal
         double siteRiskScore  = siteRiskScore(asset.getNearestSiteCode(), siteScores);
 
         double raw = (floodZoneScore * 0.40)
                    + (statusScore    * 0.40)
                    + (siteRiskScore  * 0.20);
 
-        // Clamp to [0, 1]
         return Math.min(1.0, Math.max(0.0, raw));
     }
 
@@ -90,11 +101,10 @@ public class CorridorHeatmapService {
         };
     }
 
-    /** Latest environmental reading status → 0.0–1.0 */
-    private double latestStatusScore(String assetId) {
-        Optional<EnvironmentalReading> latest = readingRepository.findLatestByAssetId(assetId);
-        if (latest.isEmpty()) return 0.10; // no data → treat as normal
-        return switch (latest.get().getStatus().toLowerCase()) {
+    /** Environmental reading status string → 0.0–1.0 score */
+    private double statusToScore(String status) {
+        if (status == null) return 0.10;
+        return switch (status.toLowerCase()) {
             case "critical" -> 1.0;
             case "warning"  -> 0.70;
             case "advisory" -> 0.40;

@@ -1,6 +1,9 @@
 package com.sentinel.etl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinel.alert.AlertRulesEngine;
+import com.sentinel.corridor.EnvironmentalReading;
+import com.sentinel.corridor.EnvironmentalReadingRepository;
 import com.sentinel.site.AuditEntity;
 import com.sentinel.site.AuditRepository;
 import com.sentinel.site.IncidentEntity;
@@ -20,35 +23,23 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-/**
- * Two responsibilities:
- *
- * 1. AUTO-START: On application startup, launches run_live.sh as a background
- *    process so the Python ETL runs every minute without any manual step.
- *    The process is stopped cleanly when Spring Boot shuts down.
- *
- * 2. RELOAD: Polls live_batch.json every minute and upserts new incidents
- *    and audits into the database. Skips batches already processed (idempotent).
- *
- * Configuration (application.yml):
- *   sentinel.etl.live-batch-path   – path to live_batch.json
- *   sentinel.etl.sentinel-dir      – path to the sentinel/ Python project root
- *   sentinel.etl.enabled           – set false to disable both
- *   sentinel.etl.poll-interval-ms  – reload frequency (default 60 000 ms)
- *   sentinel.etl.rows-per-cycle    – rows generated per ETL run (default 50)
- */
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EtlReloadService {
 
-    private final IncidentRepository incidentRepository;
-    private final AuditRepository    auditRepository;
-    private final SiteRepository     siteRepository;
-    private final ObjectMapper       objectMapper;
+    private final IncidentRepository             incidentRepository;
+    private final AuditRepository                auditRepository;
+    private final SiteRepository                 siteRepository;
+    private final EnvironmentalReadingRepository environmentalRepository;
+    private final ObjectMapper                   objectMapper;
+    private final AlertRulesEngine               alertRulesEngine;
 
     @Value("${sentinel.etl.live-batch-path:../sentinel/data/warehouse/live_batch.json}")
     private String liveBatchPath;
@@ -59,11 +50,23 @@ public class EtlReloadService {
     @Value("${sentinel.etl.enabled:true}")
     private boolean enabled;
 
-    @Value("${sentinel.etl.rows-per-cycle:50}")
+    @Value("${sentinel.etl.rows-per-cycle:200}")
     private int rowsPerCycle;
+
+    @Value("${sentinel.etl.poll-interval-ms:120000}")
+    private long pollIntervalMs;
+
+    @Value("${sentinel.etl.frontend-refresh-ms:125000}")
+    private long frontendRefreshMs;
 
     private String  lastProcessedBatchId = null;
     private Process etlProcess           = null;
+
+    // ── Config accessors (used by EtlConfigController) ───────────────────────
+
+    public long getFrontendRefreshMs() { return frontendRefreshMs; }
+    public long getPollIntervalMs()    { return pollIntervalMs; }
+    public int  getRowsPerCycle()      { return rowsPerCycle; }
 
     // ── Auto-start on boot ────────────────────────────────────────────────────
 
@@ -101,7 +104,7 @@ public class EtlReloadService {
             ProcessBuilder pb = new ProcessBuilder("/bin/bash", script.getAbsolutePath());
             pb.directory(dir);
             pb.environment().put("ROWS",     String.valueOf(rowsPerCycle));
-            pb.environment().put("INTERVAL", "60");
+            pb.environment().put("INTERVAL", String.valueOf(pollIntervalMs / 1000));
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
             pb.redirectError(ProcessBuilder.Redirect.appendTo(logFile));
 
@@ -127,7 +130,6 @@ public class EtlReloadService {
     // ── Scheduled reload ──────────────────────────────────────────────────────
 
     @Scheduled(fixedDelayString = "${sentinel.etl.poll-interval-ms:60000}", initialDelay = 5000)
-    @Transactional
     public void reload() {
         if (!enabled) return;
 
@@ -145,13 +147,31 @@ public class EtlReloadService {
                 return;
             }
 
-            int incLoaded = loadIncidents(batch.getIncidents(), batch.getBatchId());
-            int audLoaded = loadAudits(batch.getAudits(), batch.getBatchId());
+            // Load the 6-site ID set once — shared across all three loaders this cycle.
+            // Avoids siteRepository.existsById() firing per record inside each loop.
+            Set<String> knownSiteIds = siteRepository.findAll().stream()
+                    .map(s -> s.getSiteId().toLowerCase())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            // Each loader runs in its own transaction so a failure in one
+            // does not roll back the others.
+            List<IncidentEntity> savedIncidents = loadIncidents(batch.getIncidents(), batch.getBatchId(), knownSiteIds);
+            List<AuditEntity>    savedAudits    = loadAudits(batch.getAudits(), batch.getBatchId(), knownSiteIds);
+            int envLoaded = loadEnvironmental(batch.getEnvironmental());
 
             lastProcessedBatchId = batch.getBatchId();
 
-            log.info("ETL reload [{}]: +{} incidents, +{} audits | summary={}",
-                    shortId(batch.getBatchId()), incLoaded, audLoaded, batch.getSummary());
+            log.info("ETL reload [{}]: +{} incidents, +{} audits, +{} env readings | summary={}",
+                    shortId(batch.getBatchId()), savedIncidents.size(), savedAudits.size(),
+                    envLoaded, batch.getSummary());
+
+            // Evaluate alert rules against the newly loaded incidents.
+            // Runs outside the loader transactions — alert failures never affect data load.
+            try {
+                alertRulesEngine.evaluate(savedIncidents, buildAttemptedIncidents(batch.getIncidents(), knownSiteIds));
+            } catch (Exception alertEx) {
+                log.warn("AlertRulesEngine evaluation failed (non-fatal): {}", alertEx.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("ETL reload failed: {}", e.getMessage(), e);
@@ -160,16 +180,25 @@ public class EtlReloadService {
 
     // ── Incidents ─────────────────────────────────────────────────────────────
 
-    private int loadIncidents(List<Map<String, Object>> records, String batchId) {
-        if (records == null || records.isEmpty()) return 0;
-        int count = 0;
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public List<IncidentEntity> loadIncidents(List<Map<String, Object>> records, String batchId, Set<String> knownSiteIds) {
+        if (records == null || records.isEmpty()) return List.of();
+
+        // One IN-query to find all already-persisted IDs for this batch — replaces N existsById calls.
+        Set<String> candidateIds = records.stream()
+                .map(r -> str(r, "incident_id"))
+                .filter(id -> id != null && !id.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> existingIds = incidentRepository.findExistingIds(candidateIds);
+
+        List<IncidentEntity> toSave = new java.util.ArrayList<>();
         for (Map<String, Object> r : records) {
             String id = str(r, "incident_id");
             if (id == null || id.isBlank()) continue;
-            if (incidentRepository.existsById(id)) continue;
+            if (existingIds.contains(id)) continue;
 
             String siteId = normaliseSiteId(str(r, "site"));
-            if (siteId == null || !siteRepository.existsById(siteId)) {
+            if (siteId == null || !knownSiteIds.contains(siteId)) {
                 log.debug("ETL: skipping incident {} — unknown site '{}'", id, str(r, "site"));
                 continue;
             }
@@ -186,24 +215,33 @@ public class EtlReloadService {
             e.setDecisionReason(str(r, "decision_reason"));
             e.setBatchId(batchId);
             e.setIngestionTimestamp(LocalDateTime.now());
-            incidentRepository.save(e);
-            count++;
+            toSave.add(e);
         }
-        return count;
+
+        incidentRepository.saveAll(toSave);
+        return toSave;
     }
 
     // ── Audits ────────────────────────────────────────────────────────────────
 
-    private int loadAudits(List<Map<String, Object>> records, String batchId) {
-        if (records == null || records.isEmpty()) return 0;
-        int count = 0;
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public List<AuditEntity> loadAudits(List<Map<String, Object>> records, String batchId, Set<String> knownSiteIds) {
+        if (records == null || records.isEmpty()) return List.of();
+
+        Set<String> candidateIds = records.stream()
+                .map(r -> str(r, "audit_id"))
+                .filter(id -> id != null && !id.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> existingIds = auditRepository.findExistingIds(candidateIds);
+
+        List<AuditEntity> toSave = new java.util.ArrayList<>();
         for (Map<String, Object> r : records) {
             String id = str(r, "audit_id");
             if (id == null || id.isBlank()) continue;
-            if (auditRepository.existsById(id)) continue;
+            if (existingIds.contains(id)) continue;
 
             String siteId = normaliseSiteId(str(r, "site"));
-            if (siteId == null || !siteRepository.existsById(siteId)) {
+            if (siteId == null || !knownSiteIds.contains(siteId)) {
                 log.debug("ETL: skipping audit {} — unknown site '{}'", id, str(r, "site"));
                 continue;
             }
@@ -221,13 +259,81 @@ public class EtlReloadService {
             e.setDecisionReason(str(r, "decision_reason"));
             e.setBatchId(batchId);
             e.setIngestionTimestamp(LocalDateTime.now());
-            auditRepository.save(e);
-            count++;
+            toSave.add(e);
         }
-        return count;
+
+        auditRepository.saveAll(toSave);
+        return toSave;
+    }
+
+    // ── Environmental readings (corridor heatmap) ─────────────────────────────
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public int loadEnvironmental(List<Map<String, Object>> records) {
+        if (records == null || records.isEmpty()) return 0;
+
+        Set<String> candidateIds = records.stream()
+                .map(r -> str(r, "reading_id"))
+                .filter(id -> id != null && !id.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> existingIds = environmentalRepository.findExistingIds(candidateIds);
+
+        List<EnvironmentalReading> toSave = new java.util.ArrayList<>();
+        for (Map<String, Object> r : records) {
+            String id      = str(r, "reading_id");
+            String assetId = str(r, "asset_id");
+            if (id == null || id.isBlank() || assetId == null || assetId.isBlank()) continue;
+            if (existingIds.contains(id)) continue;
+
+            EnvironmentalReading e = new EnvironmentalReading();
+            e.setReadingId(id);
+            e.setAssetId(assetId);
+            e.setReadingTimestamp(parseDateTime(str(r, "timestamp")));
+            e.setPressurePsi(toDouble(r.get("pressure_psi")));
+            e.setFlowRateBph(toDouble(r.get("flow_rate_bph")));
+            e.setTemperatureCelsius(toDouble(r.get("temperature_celsius")));
+            e.setRainfallMm(toDouble(r.get("rainfall_mm")));
+            e.setStatus(str(r, "status"));
+            toSave.add(e);
+        }
+
+        try {
+            environmentalRepository.saveAll(toSave);
+        } catch (Exception ex) {
+            // FK violation: asset not yet in dim_asset — log and continue
+            log.debug("ETL: environmental batch save partial failure — {}", ex.getMessage());
+        }
+        return toSave.size();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a lightweight list of IncidentEntity objects from raw JSON records
+     * for ALL candidates in this batch (including duplicates that were skipped).
+     * Used by AlertRulesEngine to compute rejection rates across the full batch.
+     */
+    private List<IncidentEntity> buildAttemptedIncidents(List<Map<String, Object>> records,
+                                                          Set<String> knownSiteIds) {
+        if (records == null) return List.of();
+        List<IncidentEntity> result = new java.util.ArrayList<>();
+        for (Map<String, Object> r : records) {
+            String id     = str(r, "incident_id");
+            String siteRaw = str(r, "site");
+            if (id == null || id.isBlank()) continue;
+            String siteId = normaliseSiteId(siteRaw);
+            if (siteId == null || !knownSiteIds.contains(siteId)) continue;
+
+            IncidentEntity e = new IncidentEntity();
+            e.setIncidentId(id);
+            e.setSiteId(siteId);
+            e.setSeverity(str(r, "severity"));
+            e.setDecision(str(r, "decision"));
+            e.setIncidentDate(parseDateTime(str(r, "incident_date")));
+            result.add(e);
+        }
+        return result;
+    }
 
     /** "SITE-001" → "site-001" — matches the lowercase keys in V2__seed_data.sql */
     private String normaliseSiteId(String raw) {
@@ -265,6 +371,12 @@ public class EtlReloadService {
     private Integer toInt(Object v) {
         if (v == null) return null;
         try { return (int) Double.parseDouble(v.toString()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private Double toDouble(Object v) {
+        if (v == null) return null;
+        try { return Double.parseDouble(v.toString()); }
         catch (NumberFormatException e) { return null; }
     }
 

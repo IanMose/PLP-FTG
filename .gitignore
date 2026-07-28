@@ -38,3 +38,7 @@ Thumbs.db
 
 # md files #
 Sentinel_Repo_Setup_Guide.md
+sentinel-frontend/CLEANUP_AUDIT.md
+docs/current-stage-validation-report.md
+docs/stage2-alert-gaps-backlog.md
+sentinel-system-summary.md 

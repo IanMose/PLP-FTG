@@ -64,7 +64,7 @@ export const sidebarItems: NavGroup[] = [
       },
       {
         id: "sites",
-        title: "Corridor Heatmap",
+        title: "Sites",
         url: "/dashboard/sites",
         icon: Map,
       },

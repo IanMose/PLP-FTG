@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 interface RiskHeatmapProps {
   sites: SiteRiskSummary[];
-  /** When true the component is in the full-page analytics view — shows all sites without a "View All" link */
+  /** When true, renders in the full analytics view — hides "View All" button. */
   fullView?: boolean;
 }
 
@@ -60,7 +60,7 @@ export function RiskHeatmap({ sites, fullView = false }: RiskHeatmapProps) {
           <div className="min-w-0">
             <CardTitle>Risk Heatmap</CardTitle>
             <CardDescription>
-              Site-by-site risk visualization — sorted by risk score (highest first)
+              KPC site-by-site risk — sorted highest first. Click any tile for incident history.
             </CardDescription>
           </div>
           {!fullView && (
@@ -79,8 +79,8 @@ export function RiskHeatmap({ sites, fullView = false }: RiskHeatmapProps) {
             className={cn(
               "grid gap-2",
               fullView
-                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6",
+                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7"
+                : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7",
             )}
           >
             {sorted.map((site) => {
@@ -107,6 +107,9 @@ export function RiskHeatmap({ sites, fullView = false }: RiskHeatmapProps) {
                         {site.riskScore}
                       </div>
                       <div className="line-clamp-1 text-center text-xs">{site.siteName}</div>
+                      <div className="text-center text-[10px] opacity-60 tabular-nums">
+                        {site.incidentCount}inc · {site.daysSinceLastAudit}d
+                      </div>
                       <ArrowUpRight className="absolute top-1.5 right-1.5 size-3 opacity-0 transition-opacity group-hover:opacity-60" />
                     </Link>
                   </TooltipTrigger>

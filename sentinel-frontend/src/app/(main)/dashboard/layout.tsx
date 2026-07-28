@@ -8,12 +8,13 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
 
-import { fetchAlerts } from "@/lib/sentinel/api";
+import { cachedFetchAlerts } from "@/lib/sentinel/cached-fetches";
 
 import { LayoutControls } from "./_components/sidebar/layout-controls";
 import { NotificationBell } from "./_components/sidebar/notification-bell";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
 import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
+import { DashboardAutoRefresh } from "./_components/dashboard-auto-refresh";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
@@ -21,7 +22,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
   const [variant, collapsible, alerts] = await Promise.all([
     getPreference("sidebar_variant"),
     getPreference("sidebar_collapsible"),
-    fetchAlerts(),
+    cachedFetchAlerts(),
   ]);
 
   return (
@@ -69,6 +70,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
         </header>
         {/* Pages can set data-content-padding="false" to render full-bleed app layouts. */}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden p-4 has-data-[content-padding=false]:p-0 md:p-6 md:has-data-[content-padding=false]:p-0">
+          <DashboardAutoRefresh />
           {children}
         </div>
       </SidebarInset>

@@ -75,7 +75,7 @@ INSERT INTO dim_asset (asset_id, asset_type, nearest_site_code, segment, chainag
   ('MP-0040', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 206.3, -2.974587, 38.326978, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
   ('MP-0041', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 211.6, -2.939334, 38.306542, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
   ('MP-0042', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 216.9, -2.901535, 38.288, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
-  ('MP-0043', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 222.2, 118.655406, 38.263752, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
+  ('MP-0043', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 222.2, -2.862272, 38.263752, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
   ('MP-0044', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 227.5, -2.811148, 38.239825, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
   ('MP-0045', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 232.8, -2.769116, 38.214954, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),
   ('MP-0046', 'monitoring_point', NULL, 'Manyani-Mtito Andei', 238.2, -2.735844, 38.186809, 'high_flood', 'pressure,flow,fiber_acoustic,rainfall'),

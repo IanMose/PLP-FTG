@@ -40,6 +40,8 @@ INCIDENT_TYPES = ["Leak", "Spill", "Fire", "Near Miss", "Equipment Failure"]
 STATUSES = ["Open", "In Progress", "Closed"]
 
 SENSOR_IDS = [f"SNS-{i:03d}" for i in range(1, 15)]
+
+# Real pipeline section names matching dim_asset.csv segment labels
 PIPELINE_SECTIONS = [
     "Section A — Mombasa-Nairobi Main",
     "Section B — Nairobi-Nakuru Spur",
@@ -47,6 +49,84 @@ PIPELINE_SECTIONS = [
     "Section D — Sinendet Lateral",
     "Section E — Makueni Branch",
 ]
+
+# All corridor assets from dim_asset.csv — used for live corridor telemetry generation.
+# Includes monitoring points (MP), pump stations (PS), and depots (DEP).
+# Format: (asset_id, segment_label, flood_zone, is_high_risk_proximity)
+CORRIDOR_ASSETS = [
+    # ── Main line: MP assets (sample — every 5th to keep batch size reasonable) ──
+    ("MP-0001", "Mombasa-Samburu",          "low",           False),
+    ("MP-0005", "Mombasa-Samburu",          "low",           False),
+    ("MP-0010", "Mombasa-Samburu",          "low",           False),
+    ("MP-0013", "Samburu-Maungu",           "low",           False),
+    ("MP-0018", "Samburu-Maungu",           "low",           False),
+    ("MP-0022", "Samburu-Maungu",           "low",           False),
+    ("MP-0026", "Maungu-Voi",              "high_flood",     True),
+    ("MP-0028", "Maungu-Voi",              "high_flood",     True),
+    ("MP-0031", "Voi-Manyani",             "high_flood",     True),
+    ("MP-0033", "Voi-Manyani",             "high_flood",     True),
+    ("MP-0036", "Manyani-Mtito Andei",     "high_flood",     True),
+    ("MP-0040", "Manyani-Mtito Andei",     "high_flood",     True),
+    ("MP-0045", "Manyani-Mtito Andei",     "high_flood",     True),
+    ("MP-0048", "Mtito Andei-Makindu",     "high_flood",     True),
+    ("MP-0052", "Mtito Andei-Makindu",     "high_flood",     True),
+    ("MP-0057", "Mtito Andei-Makindu",     "high_flood",     True),
+    ("MP-0059", "Makindu-Sultan Hamud",    "moderate_flood", True),
+    ("MP-0063", "Makindu-Sultan Hamud",    "moderate_flood", True),
+    ("MP-0068", "Makindu-Sultan Hamud",    "moderate_flood", False),
+    ("MP-0072", "Sultan Hamud-Konza",      "moderate_flood", False),
+    ("MP-0076", "Sultan Hamud-Konza",      "moderate_flood", False),
+    ("MP-0077", "Konza-Athi River",        "low",            False),
+    ("MP-0082", "Konza-Athi River",        "low",            False),
+    ("MP-0084", "Athi River-Nairobi Terminal", "low",        False),
+    ("MP-0088", "Athi River-Nairobi Terminal", "low",        False),
+    # ── Western spur: MP assets ──
+    ("MP-0089", "Nairobi Terminal-Naivasha", "moderate_flood", False),
+    ("MP-0095", "Nairobi Terminal-Naivasha", "moderate_flood", False),
+    ("MP-0100", "Nairobi Terminal-Naivasha", "moderate_flood", False),
+    ("MP-0105", "Naivasha-Nakuru",          "high_flood",     True),
+    ("MP-0110", "Naivasha-Nakuru",          "high_flood",     True),
+    ("MP-0116", "Naivasha-Nakuru",          "high_flood",     True),
+    ("MP-0117", "Nakuru-Sinendet",          "low",            False),
+    ("MP-0125", "Nakuru-Sinendet",          "low",            False),
+    ("MP-0132", "Nakuru-Sinendet",          "low",            False),
+    ("MP-0133", "Sinendet-Eldoret",         "low",            False),
+    ("MP-0138", "Sinendet-Eldoret",         "low",            False),
+    ("MP-0143", "Sinendet-Eldoret",         "low",            False),
+    # ── Kisumu branch: MP assets ──
+    ("MP-0144", "Sinendet-Muhoroni",        "moderate_flood", False),
+    ("MP-0148", "Sinendet-Muhoroni",        "moderate_flood", False),
+    ("MP-0151", "Sinendet-Muhoroni",        "moderate_flood", False),
+    ("MP-0152", "Muhoroni-Kisumu",          "low",            False),
+    ("MP-0157", "Muhoroni-Kisumu",          "low",            False),
+    ("MP-0160", "Muhoroni-Kisumu",          "low",            False),
+    # ── All pump stations — every one included ──
+    ("PS-01",   "Mombasa",                          "low",            False),
+    ("PS-02",   "Mombasa-Samburu",                  "low",            False),
+    ("PS-03",   "Mombasa-Samburu",                  "low",            False),
+    ("PS-04",   "Samburu-Maungu",                   "high_flood",     True),
+    ("PS-05",   "Samburu-Maungu",                   "low",            False),
+    ("PS-06",   "Mtito Andei-Makindu",              "high_flood",     True),   # SITE-003 — high risk
+    ("PS-07",   "Makindu-Sultan Hamud",             "moderate_flood", False),
+    ("PS-08",   "Sultan Hamud-Konza",               "moderate_flood", False),
+    ("PS-10",   "Athi River-Nairobi Terminal",      "low",            False),
+    ("PS-23",   "Nairobi Terminal-Naivasha",        "moderate_flood", False),
+    ("PS-24",   "Naivasha-Nakuru",                  "high_flood",     True),
+    ("PS-26",   "Nakuru-Sinendet",                  "low",            False),  # SITE-006 — high risk
+    ("PS-27",   "Sinendet-Eldoret",                 "low",            False),
+    ("PS-28",   "Muhoroni-Kisumu",                  "low",            False),
+    # ── Depots ──
+    ("DEP-01",  "Mombasa",                  "low",            False),
+    ("DEP-02",  "Nairobi Terminal",         "low",            False),
+]
+
+# Status escalation probabilities per flood zone
+# (normal, advisory, warning, critical)
+FLOOD_ZONE_STATUS_WEIGHTS = {
+    "high_flood":     [0.50, 0.25, 0.15, 0.10],
+    "moderate_flood": [0.70, 0.18, 0.09, 0.03],
+    "low":            [0.88, 0.08, 0.03, 0.01],
+}
 
 SITE_COORDS = {
     "SITE-001": (-1.30,  36.85),
@@ -181,6 +261,75 @@ def generate_batch(n_rows: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def generate_corridor_telemetry(rng: random.Random, np_rng, now: "datetime") -> list:
+    """
+    Generate one environmental reading per corridor asset (MP, PS, DEP).
+
+    Each reading has:
+    - realistic pressure / flow / temperature / rainfall
+    - a derived status ("normal" | "advisory" | "warning" | "critical")
+      weighted by flood zone, with extra pressure on high-risk PS nodes
+
+    High-risk proximity assets (flood zone = high_flood, or PS-06/PS-26) get
+    escalated status probabilities to drive the corridor heatmap dynamically.
+    """
+    STATUS_LEVELS = ["normal", "advisory", "warning", "critical"]
+    rows = []
+
+    for asset_id, segment, flood_zone, high_risk_proximity in CORRIDOR_ASSETS:
+        # Pressure: pump stations run at higher pressure (they're boosters)
+        is_ps = asset_id.startswith("PS-")
+        is_dep = asset_id.startswith("DEP-")
+
+        if is_ps:
+            base_pressure = float(np_rng.normal(480, 70))
+            base_flow = float(np_rng.normal(3200, 600))
+        elif is_dep:
+            base_pressure = float(np_rng.normal(200, 30))   # storage, lower pressure
+            base_flow = float(np_rng.normal(1500, 400))
+        else:
+            base_pressure = float(np_rng.normal(400, 80))
+            base_flow = float(np_rng.normal(3000, 800))
+
+        pressure = round(float(np.clip(base_pressure, 50, 700)), 1)
+        flow = round(float(np.clip(base_flow, 500, 5500)), 1)
+        temperature = round(float(np.clip(np_rng.normal(30, 6), 15, 50)), 1)
+
+        # Rainfall: higher in flood zones
+        rainfall_base = 0.8 if flood_zone == "high_flood" else 0.4 if flood_zone == "moderate_flood" else 0.1
+        rainfall = round(max(0.0, float(np_rng.normal(rainfall_base, 0.3))), 2)
+
+        # Status: blend flood zone weights with extra boost for high-risk proximity
+        weights = list(FLOOD_ZONE_STATUS_WEIGHTS.get(flood_zone, FLOOD_ZONE_STATUS_WEIGHTS["low"]))
+        if high_risk_proximity or asset_id in ("PS-06", "PS-26"):
+            # Shift probability mass toward warning/critical
+            weights[0] -= 0.10
+            weights[2] += 0.07
+            weights[3] += 0.03
+
+        # Occasional pressure spike → forces "warning" or "critical"
+        if rng.random() < 0.02:  # 2% spike chance
+            pressure = round(float(np_rng.uniform(750, 1100)), 1)
+            weights = [0.0, 0.0, 0.50, 0.50]
+
+        status = rng.choices(STATUS_LEVELS, weights=weights, k=1)[0]
+
+        reading_id = f"LCT-{asset_id}-{now.strftime('%Y%m%d%H%M%S')}"
+
+        rows.append({
+            "reading_id":          reading_id,
+            "asset_id":            asset_id,
+            "timestamp":           now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "pressure_psi":        pressure,
+            "flow_rate_bph":       flow,
+            "temperature_celsius": temperature,
+            "rainfall_mm":         rainfall,
+            "status":              status,
+        })
+
+    return rows
+
+
 def run(n_rows: int = 50, verbose: bool = True) -> dict:
     """
     Run one full ETL cycle on a freshly generated batch.
@@ -199,18 +348,25 @@ def run(n_rows: int = 50, verbose: bool = True) -> dict:
     log(f"  Sentinel Live ETL  |  {ts}")
     log(f"{'='*55}")
 
+    # Shared RNG instances for this run
+    rng = random.Random()
+    np_rng = np.random.default_rng()
+    now = datetime.now(timezone.utc)
+
     # ── Stage 1: Generate ───────────────────────────────────────────────────
     log(f"[1/4] Generating {n_rows} new rows...")
     raw_df = generate_batch(n_rows)
     log(f"      → {len(raw_df)} rows  ({raw_df.columns.tolist()[:4]}...)")
 
+    # ── Stage 1b: Generate corridor telemetry ───────────────────────────────
+    corridor_rows = generate_corridor_telemetry(rng, np_rng, now)
+    log(f"      → {len(corridor_rows)} corridor readings ({len(CORRIDOR_ASSETS)} assets)")
+
     # ── Stage 2: Ingest (assign batch_id, checksum) ─────────────────────────
     log("[2/4] Ingesting...")
     mgr = IngestionManager()
     raw_df["_source_file"] = "live_batch.csv"
-    raw_df["_batch_id"] = mgr.batch_id
-
-    # Persist raw batch so the existing ingest log path still works
+    raw_df["_batch_id"] = mgr.batch_id    # Persist raw batch so the existing ingest log path still works
     raw_path = WAREHOUSE_DIR / "raw_batch.parquet"
     raw_df.to_parquet(raw_path, index=False)
     log(f"      → batch_id: {mgr.batch_id[:8]}...")
@@ -243,7 +399,7 @@ def run(n_rows: int = 50, verbose: bool = True) -> dict:
 
     # ── Write JSON export for Spring Boot scheduler to consume ───────────────
     log("[6/6] Writing JSON export for backend reload...")
-    _write_json_export(decided_df, mgr.batch_id, ts)
+    _write_json_export(decided_df, corridor_rows, mgr.batch_id, ts)
     log(f"{'='*55}")
 
     return {
@@ -255,20 +411,22 @@ def run(n_rows: int = 50, verbose: bool = True) -> dict:
     }
 
 
-def _write_json_export(decided_df: pd.DataFrame, batch_id: str, ts: str):
+def _write_json_export(decided_df: pd.DataFrame, corridor_rows: list, batch_id: str, ts: str):
     """
     Write a compact JSON file the Spring Boot scheduler reads every minute.
-    Only trusted + corrected records are exported — same filter as load.py.
-    Records are normalised: nulls become None, timestamps become ISO strings.
+    Only trusted + corrected records are exported for incidents/audits.
+    Corridor telemetry (environmental readings) is exported in full — it feeds
+    fact_environmental for the corridor heatmap weight computation.
     """
     import json
 
     export = {
-        "batch_id":  batch_id,
-        "timestamp": ts,
-        "incidents": [],
-        "audits":    [],
-        "telemetry": [],
+        "batch_id":      batch_id,
+        "timestamp":     ts,
+        "incidents":     [],
+        "audits":        [],
+        "telemetry":     [],
+        "environmental": [],
         "summary": decided_df["decision"].value_counts().to_dict(),
     }
 
@@ -286,33 +444,34 @@ def _write_json_export(decided_df: pd.DataFrame, batch_id: str, ts: str):
                             (trusted_df["audit_id"].astype(str) != "")].copy()
         export["audits"] = _df_to_records(aud_df)
 
-    # Telemetry
+    # Site telemetry
     if "reading_id" in trusted_df.columns:
         tel_df = trusted_df[trusted_df["reading_id"].notna() &
                             (trusted_df["reading_id"].astype(str) != "")].copy()
         export["telemetry"] = _df_to_records(tel_df)
 
+    # Corridor environmental readings (all, not quality-gated)
+    export["environmental"] = [{k: _clean_value(v) for k, v in row.items()} for row in corridor_rows]
+
     export_path = WAREHOUSE_DIR / "live_batch.json"
     with open(export_path, "w") as f:
-        json.dump(export, f, default=str, indent=None)  # compact, default=str handles timestamps
+        json.dump(export, f, default=str, indent=None)
+
+
+def _clean_value(v):
+    """Replace NaN/inf with None for JSON safety."""
+    import math
+    if v is None:
+        return None
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    return v
 
 
 def _df_to_records(df: pd.DataFrame) -> list:
-    """Convert a DataFrame to a list of dicts safe for JSON serialisation.
-    Replaces NaN, inf, and -inf with None so json.dump produces valid JSON.
-    """
-    import math
-
-    def _clean(v):
-        if v is None:
-            return None
-        # catch float NaN and ±inf
-        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-            return None
-        return v
-
+    """Convert a DataFrame to a list of dicts safe for JSON serialisation."""
     records = df.where(df.notna(), other=None).to_dict(orient="records")
-    return [{k: _clean(val) for k, val in row.items()} for row in records]
+    return [{k: _clean_value(val) for k, val in row.items()} for row in records]
 
 
 def main():
