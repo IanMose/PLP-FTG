@@ -30,6 +30,56 @@ Running `python3 src/generate_data.py` twice produces identical output.
 | western | Nairobi Terminal → Nakuru → Sinendet → Eldoret | SITE-001, SITE-004, SITE-005, SITE-006 |
 | kisumu | Sinendet → Kisumu | SITE-006 (branch origin) |
 
+## KPC Pump Station Numbering (Option B — Operational Scheme)
+
+The system adopts **KPC's post-2005 operational numbering** as the canonical
+PS reference. This is confirmed by the KPC industrial attachment report
+(PS-25 = Nakuru) and aligns with contemporary KPC operational documentation.
+
+### Main Line (PS-01 to PS-13, Mombasa → Nairobi, ~490km)
+
+| PS No. | Location | Approx. km | Notes |
+|--------|----------|-----------|-------|
+| PS-01 | Kipevu / Changamwe, Mombasa | 0 | Source terminal — `SITE-002` |
+| PS-02 | Mariakani | ~40 | First booster |
+| PS-03 | Maji ya Chumvi | ~65 | |
+| PS-04 | Samburu | ~80 | |
+| PS-05 | Mackinnon Road | ~130 | |
+| PS-06 | Maungu | ~165 | |
+| PS-07 | Manyani | ~240 | Tsavo West area |
+| PS-08 | Mtito Andei | ~305 | |
+| PS-09 | Makindu (Kibwezi area) | ~360 | Nearest to `SITE-003` (Makueni PS) |
+| PS-10 | Sultan Hamud | ~435 | |
+| PS-11 | Konza | ~460 | |
+| PS-12 | Athi River / Mlolongo | ~480 | |
+| PS-13 | Nairobi Terminal / Embakasi | ~490 | Receiving terminal — `SITE-001` |
+
+### Western Spur (PS-21 to PS-26, Nairobi → Eldoret)
+
+| PS No. | Location | Notes |
+|--------|----------|-------|
+| PS-21 | Naivasha / Morendat | First western spur booster |
+| PS-22 | Nakuru (booster) | Separate from receiving terminal |
+| PS-23 | Nakuru (depot / receiving) | `SITE-004` |
+| PS-24 | Sinendet | `SITE-006` — high-risk |
+| PS-25 | Nakuru (branch junction) | Confirmed per KPC attachment report |
+| PS-26 | Eldoret terminal | `SITE-005` |
+
+### Kisumu Branch (Line 5)
+
+| PS No. | Location | Notes |
+|--------|----------|-------|
+| PS-27 | Kisumu terminal | End of branch — no dim_site entry |
+
+**Note on Voi:** Voi sits between Maungu and Manyani on the main line but
+has no numbered KPC pump station in this scheme — it is a geographic waypoint
+used for corridor interpolation only, not an operational facility.
+
+**Note on PS-09 vs old PS-06:** Earlier versions of the system used PS-06 for
+Makindu. Under Option B operational numbering, Makindu = PS-09. The `dim_asset`
+asset_id `PS-06` was renamed to `PS-09` in V7. The `nearest_site_code` link to
+`site-003` is preserved.
+
 ## Deliberate Signal (for Stage 2 risk model)
 
 Two of the six sites — **SITE-003 (Makueni Pump Station)** and **SITE-006 (Sinendet

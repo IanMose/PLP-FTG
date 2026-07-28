@@ -43,15 +43,7 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
                 />
               </svg>
               {/* KPC logo inside the ribbon (counter-rotated so it appears upright) */}
-              <div className="absolute inset-0 flex items-center justify-center rotate-180">
-                <Image
-                  src="/kpc-logo.svg"
-                  alt="KPC Logo"
-                  width={70}
-                  height={90}
-                  className="object-contain"
-                />
-              </div>
+              <div className="absolute inset-0 flex items-center justify-center rotate-180" />
             </div>
           </div>
         </div>

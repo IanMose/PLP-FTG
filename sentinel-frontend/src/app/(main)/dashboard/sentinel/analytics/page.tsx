@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ArrowLeft, ArrowUpRight, Calendar, Gauge, ShieldAlert, Zap } from "lucide-react";
 
+import { BackendError } from "@/components/backend-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +41,23 @@ function RiskBar({ score, band }: { score: number; band: SeverityBand }) {
 }
 
 export default async function AnalyticsPage() {
-  const sites = await fetchRiskSummary();
+  let sites: SiteRiskSummary[];
+  try {
+    sites = await fetchRiskSummary();
+  } catch (err) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Button asChild variant="outline" size="icon-sm">
+            <Link href="/dashboard/sentinel"><ArrowLeft /></Link>
+          </Button>
+          <h1 className="text-2xl tracking-tight sm:text-3xl">Risk Heatmap — All KPC Sites</h1>
+        </div>
+        <BackendError message={err instanceof Error ? err.message : "Failed to load site data"} />
+      </div>
+    );
+  }
+
   const sorted = [...sites].sort((a, b) => b.riskScore - a.riskScore);
 
   const criticalCount = sites.filter((s) => s.severityBand === "Critical").length;
@@ -59,9 +76,10 @@ export default async function AnalyticsPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl tracking-tight sm:text-3xl">Risk Heatmap — All Sites</h1>
+            <h1 className="text-2xl tracking-tight sm:text-3xl">Risk Heatmap — All KPC Sites</h1>
             <p className="text-muted-foreground text-sm">
-              Full site-by-site risk breakdown. Click any site to view its incident history.
+              All {sites.length} KPC operational facilities — risk score, incident history, and audit status.
+              Click any site to drill down into its incident and telemetry records.
             </p>
           </div>
         </div>
@@ -123,7 +141,8 @@ export default async function AnalyticsPage() {
         <CardHeader>
           <CardTitle>Site Risk Details</CardTitle>
           <CardDescription>
-            All {sites.length} sites — sorted by risk score. Click a site name to view its incidents.
+            All {sites.length} KPC sites — sorted by risk score. PS numbers are embedded in site names.
+            Click a site name to view incidents and telemetry.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">

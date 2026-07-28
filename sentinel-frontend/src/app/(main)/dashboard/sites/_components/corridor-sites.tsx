@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import dynamic from "next/dynamic";
 
-import type { HeatPoint } from "@/lib/sentinel/corridor";
+import type { CorridorAsset, HeatPoint } from "@/lib/sentinel/corridor";
 
 import { CorridorAssetList } from "./corridor-asset-list";
 
@@ -20,9 +20,10 @@ const CorridorHeatmapMap = dynamic(
 
 interface CorridorSitesProps {
   points: HeatPoint[];
+  assets: CorridorAsset[];
 }
 
-export function CorridorSites({ points }: CorridorSitesProps) {
+export function CorridorSites({ points, assets }: CorridorSitesProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   return (
@@ -34,6 +35,7 @@ export function CorridorSites({ points }: CorridorSitesProps) {
       <div className="h-full overflow-hidden">
         <CorridorAssetList
           points={points}
+          assets={assets}
           selectedAssetId={selectedAssetId}
           onSelect={setSelectedAssetId}
         />
@@ -43,6 +45,7 @@ export function CorridorSites({ points }: CorridorSitesProps) {
       <div className="hidden h-full p-3 lg:block">
         <CorridorHeatmapMap
           points={points}
+          assets={assets}
           selectedAssetId={selectedAssetId}
           onSelect={setSelectedAssetId}
         />
