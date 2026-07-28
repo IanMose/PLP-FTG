@@ -20,15 +20,30 @@ function requireApiBase(): string {
   return API_BASE;
 }
 
-const BASE_OPTS: RequestInit = {
-  cache: "no-store",
-  signal: AbortSignal.timeout(10_000),
-};
+const TIMEOUT_MS = 10_000;
+
+/**
+ * Returns an AbortSignal that fires after TIMEOUT_MS.
+ *
+ * AbortSignal.timeout() is avoided here because it throws a DOMException
+ * (TimeoutError) whose .message property is a read-only getter. Turbopack's
+ * error boundary tries to write to .message and crashes with:
+ *   "TypeError: Cannot set property message of which has only a getter"
+ *
+ * Using AbortController + setTimeout throws a plain Error instead, which
+ * the error boundary handles cleanly.
+ */
+function makeTimeoutSignal(): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new Error(`Request timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+  return controller.signal;
+}
 
 async function authedOpts(): Promise<RequestInit> {
   const token = await getAuthToken();
   return {
-    ...BASE_OPTS,
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   };
 }
