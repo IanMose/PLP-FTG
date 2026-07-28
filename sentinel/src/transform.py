@@ -62,49 +62,72 @@ STATUS_LOOKUP = {
 
 # Site name normalization — maps dirty variants back to canonical site codes
 SITE_LOOKUP = {
-    # Canonical (already correct)
-    "site-001": "SITE-001",
-    "site-002": "SITE-002",
-    "site-003": "SITE-003",
-    "site-004": "SITE-004",
-    "site-005": "SITE-005",
-    "site-006": "SITE-006",
-    # Dirty variants for SITE-001 (Nairobi Terminal)
-    "nairobi term": "SITE-001",
-    "nairobi terminal": "SITE-001",
-    "nrb terminal": "SITE-001",
-    "nairobi": "SITE-001",
-    "nairobi  terminal": "SITE-001",
-    # Dirty variants for SITE-002 (Mombasa Terminal)
-    "mombasa term": "SITE-002",
-    "mombasa terminal": "SITE-002",
-    "msa terminal": "SITE-002",
-    "mombasa": "SITE-002",
-    "mombasa  terminal": "SITE-002",
-    # Dirty variants for SITE-003 (Makueni Pump Station)
-    "makueni ps": "SITE-003",
-    "makueni pump": "SITE-003",
-    "makueni": "SITE-003",
-    "makueni  pump station": "SITE-003",
-    "makueni pump station": "SITE-003",
-    # Dirty variants for SITE-004 (Nakuru Depot)
-    "nakuru dep": "SITE-004",
-    "nakuru depot": "SITE-004",
-    "nkr depot": "SITE-004",
-    "nakuru": "SITE-004",
-    "nakuru  depot": "SITE-004",
-    # Dirty variants for SITE-005 (Eldoret Depot)
-    "eldoret dep": "SITE-005",
-    "eldoret depot": "SITE-005",
-    "eld depot": "SITE-005",
-    "eldoret": "SITE-005",
-    "eldoret  depot": "SITE-005",
-    # Dirty variants for SITE-006 (Sinendet Pump Station)
-    "sinendet ps": "SITE-006",
-    "sinendet pump": "SITE-006",
-    "sinendet": "SITE-006",
-    "sinendet  pump station": "SITE-006",
-    "sinendet pump station": "SITE-006",
+    # Canonical forms (both cases) → lowercase DB key
+    "site-001": "site-001",
+    "site-002": "site-002",
+    "site-003": "site-003",
+    "site-004": "site-004",
+    "site-005": "site-005",
+    "site-006": "site-006",
+    "site-007": "site-007",
+    "SITE-001": "site-001",
+    "SITE-002": "site-002",
+    "SITE-003": "site-003",
+    "SITE-004": "site-004",
+    "SITE-005": "site-005",
+    "SITE-006": "site-006",
+    "SITE-007": "site-007",
+    # Dirty variants for site-001 (Nairobi Terminal)
+    "nairobi term": "site-001",
+    "nairobi terminal": "site-001",
+    "nrb terminal": "site-001",
+    "nairobi": "site-001",
+    "nairobi  terminal": "site-001",
+    # Dirty variants for site-002 (Mombasa Terminal / Kipevu / PS14)
+    "mombasa term": "site-002",
+    "mombasa terminal": "site-002",
+    "kipevu terminal": "site-002",
+    "msa terminal": "site-002",
+    "mombasa": "site-002",
+    "mombasa  terminal": "site-002",
+    # Dirty variants for site-003 (Makueni Pipeline Section / Thange)
+    "makueni ps": "site-003",
+    "makueni pump": "site-003",
+    "makueni pipeline": "site-003",
+    "makueni": "site-003",
+    "thange section": "site-003",
+    "kibwezi": "site-003",
+    "makueni  pump station": "site-003",
+    "makueni pump station": "site-003",
+    "makueni section": "site-003",
+    # Dirty variants for site-004 (Nakuru Depot)
+    "nakuru dep": "site-004",
+    "nakuru depot": "site-004",
+    "nkr depot": "site-004",
+    "nakuru": "site-004",
+    "nakuru  depot": "site-004",
+    # Dirty variants for site-005 (Eldoret Terminal)
+    "eldoret term": "site-005",
+    "eldoret terminal": "site-005",
+    "eldoret dep": "site-005",
+    "eldoret depot": "site-005",
+    "eld terminal": "site-005",
+    "eld depot": "site-005",
+    "eldoret": "site-005",
+    "eldoret  terminal": "site-005",
+    "eldoret  depot": "site-005",
+    # Dirty variants for site-006 (Sinendet Pump Station)
+    "sinendet ps": "site-006",
+    "sinendet pump": "site-006",
+    "sinendet": "site-006",
+    "sinendet  pump station": "site-006",
+    "sinendet pump station": "site-006",
+    # Dirty variants for site-007 (Kisumu Terminal / PS28)
+    "kisumu term": "site-007",
+    "kisumu terminal": "site-007",
+    "ksm terminal": "site-007",
+    "kisumu": "site-007",
+    "kisumu  terminal": "site-007",
 }
 
 
@@ -139,17 +162,18 @@ def normalize_status(value: str) -> str:
 
 
 def normalize_site(value: str) -> str:
-    """Normalize site labels back to canonical SITE-XXX codes."""
+    """Normalize site labels back to canonical site-XXX codes (lowercase, matching DB PKs)."""
     if pd.isna(value) or str(value).strip() == "":
         return value
     raw = str(value).strip()
-    # Already canonical?
-    if raw.upper().startswith("SITE-") and len(raw) == 8:
-        return raw.upper()
-    # Lookup by lowercased stripped value
+    # Already canonical lowercase format?
+    if raw.lower().startswith("site-") and len(raw) == 8:
+        return raw.lower()
+    # Lookup by lowercased stripped value — returns SITE-XXX uppercase from the table,
+    # then lowercase it to match dim_site PKs.
     normalized = SITE_LOOKUP.get(raw.lower())
     if normalized is not None:
-        return normalized
+        return normalized.lower()
     return raw  # Return as-is if not in lookup; validation can flag it
 
 

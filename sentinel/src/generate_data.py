@@ -54,11 +54,9 @@ TODAY = datetime(2026, 7, 22)  # anchor date for "future" injection logic
 
 # ============================================================================
 # Reference data: dim_site
-# NOTE: The 6-site roster is deliberately kept fictionalized (not renamed to
-# real KPC station numbers) so the Kimeu v. KPC high-risk framing stays at a
-# safe narrative distance from real asset names. See integration context doc
-# Section 1 for the trade-off. If your team decides to switch to real station
-# names (PS1-PS28), rename here and propagate through transform.py lookups.
+# NOTE: Sites now align with real KPC operational facilities plus the Thange
+# corridor segment for the Kimeu v. KPC framing. See data_generation_notes.md
+# for the full KPC pump station reference and PS numbering rationale.
 # ============================================================================
 SITES = [
     {
@@ -70,17 +68,17 @@ SITES = [
     },
     {
         "site_code": "SITE-002",
-        "site_name": "Mombasa Terminal",
+        "site_name": "Mombasa Terminal (Kipevu / PS14)",
         "region": "Mombasa",
         "asset_type": "Terminal",
         "risk_profile": "normal",
     },
     {
         "site_code": "SITE-003",
-        "site_name": "Makueni Pump Station",
+        "site_name": "Makueni Pipeline Section (Thange)",
         "region": "Makueni",
-        "asset_type": "Pump Station",
-        "risk_profile": "high",  # Thange River corridor — weak follow-through
+        "asset_type": "Pipeline Section",
+        "risk_profile": "high",  # Thange River corridor — weak audit follow-through
     },
     {
         "site_code": "SITE-004",
@@ -91,9 +89,9 @@ SITES = [
     },
     {
         "site_code": "SITE-005",
-        "site_name": "Eldoret Depot",
+        "site_name": "Eldoret Terminal",
         "region": "Uasin Gishu",
-        "asset_type": "Depot",
+        "asset_type": "Terminal",
         "risk_profile": "normal",
     },
     {
@@ -101,7 +99,14 @@ SITES = [
         "site_name": "Sinendet Pump Station",
         "region": "Bomet",
         "asset_type": "Pump Station",
-        "risk_profile": "high",  # second high-risk site
+        "risk_profile": "high",  # second high-risk site — branch junction
+    },
+    {
+        "site_code": "SITE-007",
+        "site_name": "Kisumu Terminal",
+        "region": "Kisumu",
+        "asset_type": "Terminal",
+        "risk_profile": "normal",  # confirmed KPC operational depot (PS28)
     },
 ]
 
@@ -112,14 +117,19 @@ NORMAL_SITES = [s["site_code"] for s in SITES if s["risk_profile"] == "normal"]
 # ============================================================================
 # Canonical Site Coordinates
 # ============================================================================
+# All 7 KPC operational sites. Coordinates are public town-centre references
+# jittered ±0.01–0.03° for synthetic incident placement.
+# PS numbering: PS10=Nairobi, PS14=Mombasa(Kipevu), PS25=Nakuru,
+# PS26=Sinendet, PS27=Eldoret, PS28=Kisumu. Site-003 is not a KPC depot —
+# it represents the high-risk Thange River pipeline corridor segment.
 CANONICAL_SITE_COORDS = {
-    "Nairobi Terminal":     {"latitude": -1.30,  "longitude": 36.85},
-    "Mombasa Terminal":     {"latitude": -4.05,  "longitude": 39.65},
-    "Eldoret Depot":        {"latitude":  0.52,  "longitude": 35.27},
-    "Kisumu Depot":         {"latitude": -0.10,  "longitude": 34.75},
-    "Nakuru Depot":         {"latitude": -0.30,  "longitude": 36.07},
-    "Sinendet Pump Station":{"latitude":  0.05,  "longitude": 35.45},
-    "Makueni Pump Station": {"latitude": -2.28,  "longitude": 37.83},
+    "Nairobi Terminal":                       {"latitude": -1.292, "longitude": 36.822},
+    "Mombasa Terminal (Kipevu / PS14)":       {"latitude": -4.049, "longitude": 39.674},
+    "Makueni Pipeline Section (Thange)":      {"latitude": -2.290, "longitude": 37.847},
+    "Nakuru Depot":                           {"latitude": -0.303, "longitude": 36.080},
+    "Eldoret Terminal":                       {"latitude":  0.517, "longitude": 35.268},
+    "Sinendet Pump Station":                  {"latitude":  0.043, "longitude": 35.451},
+    "Kisumu Terminal":                        {"latitude": -0.102, "longitude": 34.762},
 }
 
 # Map site_code -> site_name for coordinate lookup
@@ -150,11 +160,12 @@ INCIDENT_TYPE_DIRTY_VARIANTS = {
 # Site name dirty variants — shared across all datasets
 SITE_DIRTY_VARIANTS = {
     "SITE-001": ["Nairobi term", "nairobi terminal", "NRB Terminal", "NAIROBI", "Nairobi  Terminal"],
-    "SITE-002": ["Mombasa term", "mombasa terminal", "MSA Terminal", "MOMBASA", "Mombasa  Terminal"],
-    "SITE-003": ["Makueni PS", "makueni pump", "MAKUENI", "Makueni  Pump Station", "makueni pump station"],
+    "SITE-002": ["Mombasa term", "mombasa terminal", "Kipevu terminal", "MSA Terminal", "MOMBASA", "Mombasa  Terminal"],
+    "SITE-003": ["Makueni PS", "makueni pipeline", "MAKUENI", "Thange section", "Kibwezi", "makueni section"],
     "SITE-004": ["Nakuru dep", "nakuru depot", "NKR Depot", "NAKURU", "Nakuru  Depot"],
-    "SITE-005": ["Eldoret dep", "eldoret depot", "ELD Depot", "ELDORET", "Eldoret  Depot"],
+    "SITE-005": ["Eldoret term", "eldoret terminal", "ELD Terminal", "ELDORET", "Eldoret  Terminal"],
     "SITE-006": ["Sinendet PS", "sinendet pump", "SINENDET", "Sinendet  Pump Station", "sinendet pump station"],
+    "SITE-007": ["Kisumu term", "kisumu terminal", "KSM Terminal", "KISUMU", "Kisumu  Terminal"],
 }
 
 # Pipeline sections for telemetry
@@ -630,36 +641,45 @@ def generate_telemetry(n: int) -> list[dict]:
 
 # Main line: Mombasa → Nairobi
 # Format: (town_name, lat, lon, nearest_site_code | None)
+# Waypoints now include all KPC operational PS towns (Option B numbering).
+# Station mapping: PS-01=Mombasa, PS-02=Mariakani, PS-03=Maji ya Chumvi,
+# PS-04=Samburu, PS-05=Mackinnon Road, PS-06=Maungu, PS-07=Manyani,
+# PS-08=Mtito Andei, PS-09=Makindu, PS-10=Sultan Hamud, PS-11=Konza,
+# PS-12=Athi River, PS-13=Nairobi Terminal.
 CORRIDOR_WAYPOINTS_MAIN = [
-    ("Mombasa",          -4.0435,  39.6682, "SITE-002"),   # Mombasa Terminal
-    ("Samburu",          -3.9600,  39.1700,  None),
-    ("Maungu",           -3.5450,  38.7550,  None),
-    ("Voi",              -3.3960,  38.5567,  None),
-    ("Manyani",          -3.1900,  38.4500,  None),
-    ("Mtito Andei",      -2.6903,  38.1671,  None),
-    ("Makindu",          -2.2833,  37.8333, "SITE-003"),   # Makueni Pump Station (PS6)
-    ("Sultan Hamud",     -1.9333,  37.3167,  None),
-    ("Konza",            -1.7500,  37.1500,  None),
-    ("Athi River",       -1.4560,  36.9770,  None),
-    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # Nairobi Terminal
+    ("Mombasa",          -4.0435,  39.6682, "SITE-002"),   # PS-01 — Mombasa Terminal
+    ("Mariakani",        -3.8730,  39.4510,  None),         # PS-02 — first booster ~40km
+    ("Maji ya Chumvi",   -3.7990,  39.3110,  None),         # PS-03 — ~65km
+    ("Samburu",          -3.9600,  39.1700,  None),         # PS-04 — ~80km
+    ("Mackinnon Road",   -3.7400,  39.0550,  None),         # PS-05 — ~130km
+    ("Maungu",           -3.5450,  38.7550,  None),         # PS-06 — ~165km
+    ("Voi",              -3.3960,  38.5567,  None),         # intermediate — no PS here
+    ("Manyani",          -3.1900,  38.4500,  None),         # PS-07 — ~240km (Tsavo)
+    ("Mtito Andei",      -2.6903,  38.1671,  None),         # PS-08 — ~305km
+    ("Makindu",          -2.2833,  37.8333, "SITE-003"),   # PS-09 — ~360km (Makueni PS)
+    ("Sultan Hamud",     -1.9333,  37.3167,  None),         # PS-10 — ~435km
+    ("Konza",            -1.7500,  37.1500,  None),         # PS-11 — ~460km
+    ("Athi River",       -1.4560,  36.9770,  None),         # PS-12 — ~480km (Mlolongo)
+    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # PS-13 — Embakasi terminal
 ]
 
 # Western spur: Nairobi Terminal → Nakuru → Sinendet → Eldoret
-# (FIX Issue 1: new chain — covers SITE-004, SITE-005, SITE-006)
+# KPC operational numbering: PS-21=Naivasha, PS-22/23=Nakuru, PS-24=Sinendet,
+# PS-25=Nakuru (branch station), PS-26=Eldoret.
 CORRIDOR_WAYPOINTS_WESTERN = [
-    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # shared origin
-    ("Naivasha",         -0.7167,  36.4333,  None),         # Morendat / PS23 area
-    ("Nakuru",           -0.3031,  36.0800, "SITE-004"),   # Nakuru Depot
-    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # Sinendet Pump Station (high-risk)
-    ("Eldoret",           0.5167,  35.2833, "SITE-005"),   # Eldoret Depot
+    ("Nairobi Terminal", -1.2921,  36.8219, "SITE-001"),   # PS-13 — shared origin
+    ("Naivasha",         -0.7167,  36.4333,  None),         # PS-21 — Morendat booster
+    ("Nakuru",           -0.3031,  36.0800, "SITE-004"),   # PS-23 — Nakuru Depot
+    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # PS-24 — high-risk site
+    ("Eldoret",           0.5167,  35.2833, "SITE-005"),   # PS-26 — Eldoret terminal
 ]
 
-# Sinendet → Kisumu branch
-# (FIX Issue 1: branch off the western spur)
+# Sinendet → Kisumu branch (Line 5)
+# KPC operational numbering: PS-27=Kisumu terminal.
 CORRIDOR_WAYPOINTS_KISUMU = [
-    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # branch origin (high-risk)
+    ("Sinendet",          0.0500,  35.4500, "SITE-006"),   # PS-24 — branch origin
     ("Muhoroni",         -0.1500,  35.2000,  None),
-    ("Kisumu",           -0.1022,  34.7617,  None),         # spur terminus
+    ("Kisumu",           -0.1022,  34.7617,  None),         # PS-27 — Kisumu terminal
 ]
 
 # All three chains combined for asset generation
@@ -687,23 +707,34 @@ FLOOD_RISK_SEGMENTS = {
 # Named pump stations along the corridor (for asset generation)
 # Each tuple: (asset_id, town_name) — town must exist in one of the waypoint chains
 PUMP_STATION_TOWNS = [
-    # Main line stations
-    ("PS-01", "Mombasa"),
-    ("PS-02", "Samburu"),
-    ("PS-03", "Maungu"),
-    ("PS-04", "Manyani"),
-    ("PS-05", "Mtito Andei"),
-    ("PS-06", "Makindu"),        # FIX Issue 2: was "Kibwezi", corrected to Makindu
-    ("PS-07", "Sultan Hamud"),
-    ("PS-08", "Konza"),
-    ("PS-10", "Nairobi Terminal"),
-    # Western spur stations
-    ("PS-23", "Naivasha"),
-    ("PS-24", "Nakuru"),
-    ("PS-26", "Sinendet"),
-    ("PS-27", "Eldoret"),
-    # Kisumu branch
-    ("PS-28", "Kisumu"),
+    # ── Mombasa–Nairobi main line ─────────────────────────────────────────────
+    # KPC operational numbering (Option B).
+    # PS-01 through PS-14 follow the main line from Kipevu to Embakasi.
+    # PS-09 = Makindu (Kibwezi area); matches what the system called PS-06 before
+    # renumbering. PS-06 was the old construction-era Makindu number — retired.
+    ("PS-01", "Mombasa"),           # Kipevu / Changamwe terminal — SITE-002
+    ("PS-02", "Mariakani"),         # First booster, ~40km from Mombasa
+    ("PS-03", "Maji ya Chumvi"),    # ~65km
+    ("PS-04", "Samburu"),           # ~80km
+    ("PS-05", "Mackinnon Road"),    # ~130km
+    ("PS-06", "Maungu"),            # ~165km
+    ("PS-07", "Manyani"),           # ~240km (Tsavo area, near Tsavo West gate)
+    ("PS-08", "Mtito Andei"),       # ~305km
+    ("PS-09", "Makindu"),           # ~360km — nearest to SITE-003 (Makueni PS)
+    ("PS-10", "Sultan Hamud"),      # ~435km
+    ("PS-11", "Konza"),             # ~460km
+    ("PS-12", "Athi River"),        # ~480km (Mlolongo / Athi River area)
+    ("PS-13", "Nairobi Terminal"),  # ~490km — Embakasi terminal, SITE-001
+    # ── Western spur: Nairobi → Nakuru → Sinendet → Eldoret ─────────────────
+    # KPC operational numbering continues into the 20s for the western spur.
+    ("PS-21", "Naivasha"),          # Morendat / Naivasha booster
+    ("PS-22", "Nakuru"),            # Nakuru booster pump
+    ("PS-23", "Nakuru"),            # Nakuru depot/receiving — SITE-004
+    ("PS-24", "Sinendet"),          # Sinendet pump station — SITE-006 (high-risk)
+    ("PS-25", "Nakuru"),            # PS-25 Nakuru confirmed in KPC attachment report
+    ("PS-26", "Eldoret"),           # Eldoret depot terminal — SITE-005
+    # ── Kisumu branch (Line 5) ────────────────────────────────────────────────
+    ("PS-27", "Kisumu"),            # Kisumu terminal — branch end
 ]
 
 # Depots — (asset_id, town_name)
@@ -858,7 +889,33 @@ def generate_corridor_assets() -> list[dict]:
             "corridor_chain": "named_station",
         })
 
+    # ── Post-generation coordinate validation guard ──────────────────────────
+    # Any row with |latitude| > 90 or |longitude| > 180 is a generator error
+    # (e.g. the interpolation produced a physically impossible value).
+    # Clamp to valid range and log so the pipeline can detect it.
+    for row in assets:
+        lat_val = row.get("latitude")
+        lon_val = row.get("longitude")
+        if lat_val == "" or lon_val == "":
+            continue  # intentionally blanked for missing-field injection — skip
+        try:
+            lat_f = float(lat_val)
+            lon_f = float(lon_val)
+        except (TypeError, ValueError):
+            continue
+        if abs(lat_f) > 90:
+            clamped = max(-90.0, min(90.0, lat_f))
+            log_issue(row["asset_id"], "corridor_assets", "generator_error:invalid_latitude",
+                      f"lat={lat_f} clamped to {clamped}")
+            row["latitude"] = round(clamped, 6)
+        if abs(lon_f) > 180:
+            clamped = max(-180.0, min(180.0, lon_f))
+            log_issue(row["asset_id"], "corridor_assets", "generator_error:invalid_longitude",
+                      f"lon={lon_f} clamped to {clamped}")
+            row["longitude"] = round(clamped, 6)
+
     return assets
+
 
 def generate_corridor_telemetry(assets: list[dict], hours: int = 48, interval_min: int = 30) -> list[dict]:
     """

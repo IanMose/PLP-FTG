@@ -10,10 +10,6 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-/**
- * JPA entity for dim_asset — the 99 monitoring points along the
- * Mombasa-Nairobi pipeline corridor.
- */
 @Entity
 @Table(name = "dim_asset")
 @Getter
@@ -28,7 +24,6 @@ public class Asset {
     @Column(name = "asset_type", nullable = false)
     private String assetType;
 
-    /** FK to dim_site — nullable; most corridor points have no linked site. */
     @Column(name = "nearest_site_code")
     private String nearestSiteCode;
 
