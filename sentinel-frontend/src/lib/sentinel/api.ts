@@ -151,6 +151,16 @@ export async function fetchUsers(token: string): Promise<SentinelUser[]> {
   return res.json();
 }
 
+/** GET /api/users/roles */
+export async function fetchRoles(token: string): Promise<SentinelRole[]> {
+  const res = await fetch(`${requireApiBase()}/api/users/roles`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Roles fetch failed: ${res.status}`);
+  return res.json();
+}
+
 /** POST /api/users */
 export async function createUser(request: CreateUserRequest, token: string): Promise<SentinelUser> {
   const res = await fetch(`${requireApiBase()}/api/users`, {
