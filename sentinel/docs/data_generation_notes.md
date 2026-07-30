@@ -5,9 +5,9 @@
 Generated with **seed `1508`** on anchor date `2026-07-22` for full reproducibility.
 Running `python3 src/generate_data.py` twice produces identical output.
 
-- **Total data rows:** 37615 (incidents: 6090, audits: 9595, telemetry: 5050, corridor_assets: 176, corridor_telemetry: 16704)
+- **Total data rows:** 38294 (incidents: 6090, audits: 9595, telemetry: 5050, corridor_assets: 183, corridor_telemetry: 17376)
 - **Reference rows:** 6 sites (dim_site.csv)
-- **Total issues deliberately injected:** 7300
+- **Total issues deliberately injected:** 7256
 
 ## Files Produced
 
@@ -18,9 +18,9 @@ Running `python3 src/generate_data.py` twice produces identical output.
 | `audits_raw.csv` | Compliance audit records (messy) | 9595 |
 | `pipeline_telemetry_batch1.csv` | Pipeline sensor readings — batch 1 (messy) | 4300 |
 | `pipeline_telemetry_batch2.csv` | Pipeline sensor readings — batch 2 (messy) | 750 |
-| `dim_asset.csv` | Corridor geo layer: main line + western spur + Kisumu branch | 176 |
-| `corridor_telemetry.csv` | 48h/30min geo-tagged sensor readings incl. rainfall | 16704 |
-| `ground_truth_issues.csv` | Answer key: every injected issue | 7300 |
+| `dim_asset.csv` | Corridor geo layer: main line + western spur + Kisumu branch | 183 |
+| `corridor_telemetry.csv` | 48h/30min geo-tagged sensor readings incl. rainfall | 17376 |
+| `ground_truth_issues.csv` | Answer key: every injected issue | 7256 |
 
 ## Corridor Chains
 
@@ -29,56 +29,6 @@ Running `python3 src/generate_data.py` twice produces identical output.
 | main | Mombasa → Nairobi Terminal | SITE-002, SITE-003 |
 | western | Nairobi Terminal → Nakuru → Sinendet → Eldoret | SITE-001, SITE-004, SITE-005, SITE-006 |
 | kisumu | Sinendet → Kisumu | SITE-006 (branch origin) |
-
-## KPC Pump Station Numbering (Option B — Operational Scheme)
-
-The system adopts **KPC's post-2005 operational numbering** as the canonical
-PS reference. This is confirmed by the KPC industrial attachment report
-(PS-25 = Nakuru) and aligns with contemporary KPC operational documentation.
-
-### Main Line (PS-01 to PS-13, Mombasa → Nairobi, ~490km)
-
-| PS No. | Location | Approx. km | Notes |
-|--------|----------|-----------|-------|
-| PS-01 | Kipevu / Changamwe, Mombasa | 0 | Source terminal — `SITE-002` |
-| PS-02 | Mariakani | ~40 | First booster |
-| PS-03 | Maji ya Chumvi | ~65 | |
-| PS-04 | Samburu | ~80 | |
-| PS-05 | Mackinnon Road | ~130 | |
-| PS-06 | Maungu | ~165 | |
-| PS-07 | Manyani | ~240 | Tsavo West area |
-| PS-08 | Mtito Andei | ~305 | |
-| PS-09 | Makindu (Kibwezi area) | ~360 | Nearest to `SITE-003` (Makueni PS) |
-| PS-10 | Sultan Hamud | ~435 | |
-| PS-11 | Konza | ~460 | |
-| PS-12 | Athi River / Mlolongo | ~480 | |
-| PS-13 | Nairobi Terminal / Embakasi | ~490 | Receiving terminal — `SITE-001` |
-
-### Western Spur (PS-21 to PS-26, Nairobi → Eldoret)
-
-| PS No. | Location | Notes |
-|--------|----------|-------|
-| PS-21 | Naivasha / Morendat | First western spur booster |
-| PS-22 | Nakuru (booster) | Separate from receiving terminal |
-| PS-23 | Nakuru (depot / receiving) | `SITE-004` |
-| PS-24 | Sinendet | `SITE-006` — high-risk |
-| PS-25 | Nakuru (branch junction) | Confirmed per KPC attachment report |
-| PS-26 | Eldoret terminal | `SITE-005` |
-
-### Kisumu Branch (Line 5)
-
-| PS No. | Location | Notes |
-|--------|----------|-------|
-| PS-27 | Kisumu terminal | End of branch — no dim_site entry |
-
-**Note on Voi:** Voi sits between Maungu and Manyani on the main line but
-has no numbered KPC pump station in this scheme — it is a geographic waypoint
-used for corridor interpolation only, not an operational facility.
-
-**Note on PS-09 vs old PS-06:** Earlier versions of the system used PS-06 for
-Makindu. Under Option B operational numbering, Makindu = PS-09. The `dim_asset`
-asset_id `PS-06` was renamed to `PS-09` in V7. The `nearest_site_code` link to
-`site-003` is preserved.
 
 ## Deliberate Signal (for Stage 2 risk model)
 
@@ -138,23 +88,24 @@ Corridor layer joins through `dim_asset.asset_id` and links back via `nearest_si
 
 | Issue Type | Count | Datasets | Expected Pipeline Outcome |
 |-----------|-------|----------|--------------------------|
-| `mixed_date_format` | 3439 | incidents, audits | Corrected (standardized to ISO 8601) |
-| `dirty_label` | 2079 | incidents, telemetry | Corrected (auto-normalized) |
-| `missing_required_field` | 592 | incidents, corridor_assets | Review (held for human sign-off) |
-| `out_of_range` | 331 | incidents, audits | Rejected or Corrected (clamp if recoverable) |
+| `mixed_date_format` | 3466 | incidents, audits | Corrected (standardized to ISO 8601) |
+| `dirty_label` | 2047 | incidents, telemetry | Corrected (auto-normalized) |
+| `missing_required_field` | 590 | incidents, corridor_assets | Review (held for human sign-off) |
+| `out_of_range` | 292 | incidents, audits | Rejected or Corrected (clamp if recoverable) |
 | `duplicate_id` | 235 | incidents, audits, telemetry | Rejected (uniqueness violation) |
-| `future_date` | 211 | incidents, audits | Rejected (physically impossible) |
-| `sensor_dropout` | 152 | telemetry | Corrected/Review (null sensor reading) |
-| `closed_before_inspection` | 137 | audits | Rejected (logical impossibility) |
-| `invalid_coordinates` | 70 | incidents, corridor_assets | Rejected (physically impossible coordinates) |
-| `pressure_spike` | 54 | telemetry, corridor_telemetry | Review (potential leading indicator for leaks) |
+| `future_date` | 196 | incidents, audits | Rejected (physically impossible) |
+| `sensor_dropout` | 155 | telemetry | Corrected/Review (null sensor reading) |
+| `closed_before_inspection` | 142 | audits | Rejected (logical impossibility) |
+| `invalid_coordinates` | 75 | incidents, corridor_assets | Rejected (physically impossible coordinates) |
+| `pressure_spike` | 56 | telemetry, corridor_telemetry | Review (potential leading indicator for leaks) |
+| `generator_error` | 2 | TBD | TBD |
 
 ## Issues by Dataset
 
-- incidents: 3447
-- audits: 2825
-- telemetry: 1016
-- corridor_assets: 3
+- incidents: 3408
+- audits: 2798
+- telemetry: 1035
+- corridor_assets: 6
 - corridor_telemetry: 9
 
 ## How to Compute Detection Rate
