@@ -9,7 +9,7 @@ export interface SessionUser {
   token: string;
 }
 
-interface AuthState {
+export interface AuthState {
   user: SessionUser | null;
   isAuthenticated: boolean;
   setUser: (user: SessionUser) => void;
