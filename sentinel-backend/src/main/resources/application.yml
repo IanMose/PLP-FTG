@@ -42,7 +42,7 @@ sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
-    secret: ${JWT_SECRET:sentinel-hse-jwt-secret-key-must-be-at-least-32-chars-long!}
+    secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
     expiration-ms: 86400000  # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
