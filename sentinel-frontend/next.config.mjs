@@ -10,15 +10,7 @@ const nextConfig = {
     workerThreads: false,
     cpus: 2,
   },
-  async redirects() {
-    return [
-      {
-        source: "/dashboard",
-        destination: "/dashboard/default",
-        permanent: false,
-      },
-    ];
-  },
+
 };
 
 export default nextConfig;
