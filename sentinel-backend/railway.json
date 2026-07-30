@@ -1,7 +1,7 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "./mvnw clean package -DskipTests"
+    "buildCommand": "mvn clean package -DskipTests"
   },
   "deploy": {
     "startCommand": "java -Dspring.profiles.active=railway -jar target/sentinel-backend-1.0.0-SNAPSHOT.jar",
