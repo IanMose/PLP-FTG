@@ -1,8 +1,4 @@
 spring:
-  config:
-    activate:
-      on-profile: railway
-
   datasource:
     # Railway injects DATABASE_URL as postgresql://user:pass@host:port/db
     # Spring Boot JDBC needs the jdbc: prefix — we prepend it here
