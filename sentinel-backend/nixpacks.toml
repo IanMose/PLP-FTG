@@ -1,8 +1,8 @@
 [phases.setup]
-aptPkgs = ["unzip"]
+nixPkgs = ["jdk17", "maven"]
 
 [phases.build]
-cmds = ["./mvnw clean package -DskipTests"]
+cmds = ["mvn clean package -DskipTests"]
 
 [start]
 cmd = "java -Dspring.profiles.active=railway -jar target/sentinel-backend-1.0.0-SNAPSHOT.jar"
