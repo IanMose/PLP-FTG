@@ -5,8 +5,8 @@ spring:
 
   datasource:
     # Railway injects DATABASE_URL as postgresql://user:pass@host:port/db
-    # Spring Boot JDBC needs the jdbc: prefix — we rewrite it here
-    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    # Spring Boot JDBC needs the jdbc: prefix — we prepend it here
+    url: jdbc:${DATABASE_URL}
     driver-class-name: org.postgresql.Driver
     username: ${PGUSER}
     password: ${PGPASSWORD}
