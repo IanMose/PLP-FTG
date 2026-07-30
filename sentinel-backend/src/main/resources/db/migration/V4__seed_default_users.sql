@@ -8,6 +8,10 @@
 --   viewer@sentinel.kpc      password: sentinel@admin
 --
 -- All share the same temporary password so they can be onboarded and rotated.
+--
+-- Note: DataSeeder.java (ApplicationRunner) also seeds these accounts at startup
+-- using the PasswordEncoder bean, with an existsByEmail guard. ON CONFLICT DO NOTHING
+-- ensures this migration is safe regardless of execution order.
 
 INSERT INTO app_user (name, email, password_hash, role_id, status, joined_at) VALUES
   (
@@ -49,4 +53,5 @@ INSERT INTO app_user (name, email, password_hash, role_id, status, joined_at) VA
     (SELECT id FROM app_role WHERE name = 'Viewer'),
     'Active',
     CURRENT_TIMESTAMP
-  );
+  )
+ON CONFLICT (email) DO NOTHING;
