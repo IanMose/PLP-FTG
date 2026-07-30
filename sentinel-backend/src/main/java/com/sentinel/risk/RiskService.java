@@ -64,14 +64,20 @@ public class RiskService {
     public List<SiteRiskSummaryDto> computeRiskSummary() {
         List<SiteEntity> sites = siteRepository.findAll();
 
-        // Pre-compute incident counts and decision rates per site
+        // Pre-compute incident counts per site
         Map<String, Long> incidentCounts = new HashMap<>();
-        Map<String, Map<String, Long>> decisionsBySite = new HashMap<>();
-
         for (Object[] row : incidentRepository.countBySite()) {
             incidentCounts.put((String) row[0], (Long) row[1]);
         }
 
+        // Pre-compute severity counts (Critical + High) per site
+        Map<String, Long> criticalHighBySite = new HashMap<>();
+        for (Object[] row : incidentRepository.countCriticalHighBySite()) {
+            criticalHighBySite.put((String) row[0], (Long) row[1]);
+        }
+
+        // Pre-compute decision rates for rejection %
+        Map<String, Map<String, Long>> decisionsBySite = new HashMap<>();
         for (Object[] row : incidentRepository.countDecisionsBySite()) {
             String siteId = (String) row[0];
             String decision = (String) row[1];
@@ -90,12 +96,14 @@ public class RiskService {
         return sites.stream().map(site -> {
             String siteId = site.getSiteId();
             long incidents = incidentCounts.getOrDefault(siteId, 0L);
+            long critHigh = criticalHighBySite.getOrDefault(siteId, 0L);
             Map<String, Long> decisions = decisionsBySite.getOrDefault(siteId, Map.of());
             LocalDateTime lastAudit = latestAudits.get(siteId);
 
+            // Use real calendar distance — 0d means audited today, still valid input
             int daysSinceAudit = lastAudit != null
                     ? (int) ChronoUnit.DAYS.between(lastAudit.toLocalDate(), today)
-                    : 30; // default high if no audit
+                    : 365; // never audited → max penalty
 
             long total = decisions.values().stream().mapToLong(Long::longValue).sum();
             long corrected = decisions.getOrDefault("corrected", 0L);
@@ -105,10 +113,9 @@ public class RiskService {
 
             int pressureSpikes = telemetryService.getPressureSpikeCountForSite(siteId);
 
-            int riskScore = computeRiskScore(incidents, decisions, daysSinceAudit, rejectedRate, pressureSpikes);
+            int riskScore = computeRiskScore(incidents, critHigh, daysSinceAudit, rejectedRate, pressureSpikes);
             String severityBand = scoreToSeverityBand(riskScore);
 
-            // Get canonical coordinates
             double[] coords = SITE_COORDS.getOrDefault(siteId, new double[]{0.0, 0.0});
 
             return SiteRiskSummaryDto.builder()
@@ -139,6 +146,9 @@ public class RiskService {
         // Compute risk score for this site
         Map<String, Long> decisions = incidents.stream()
                 .collect(Collectors.groupingBy(IncidentEntity::getDecision, Collectors.counting()));
+        long critHigh = incidents.stream()
+                .filter(i -> "Critical".equalsIgnoreCase(i.getSeverity()) || "High".equalsIgnoreCase(i.getSeverity()))
+                .count();
         long total = decisions.values().stream().mapToLong(Long::longValue).sum();
         long rejected = decisions.getOrDefault("rejected", 0L);
         double rejectedRate = total > 0 ? (double) rejected / total : 0.0;
@@ -146,10 +156,10 @@ public class RiskService {
         LocalDateTime lastAudit = audits.isEmpty() ? null : audits.get(0).getInspectionDate();
         int daysSinceAudit = lastAudit != null
                 ? (int) ChronoUnit.DAYS.between(lastAudit.toLocalDate(), LocalDate.now())
-                : 30;
+                : 365;
 
         int pressureSpikes = telemetryService.getPressureSpikeCountForSite(siteId);
-        int riskScore = computeRiskScore(incidents.size(), decisions, daysSinceAudit, rejectedRate, pressureSpikes);
+        int riskScore = computeRiskScore(incidents.size(), critHigh, daysSinceAudit, rejectedRate, pressureSpikes);
 
         // Get canonical coordinates
         double[] coords = SITE_COORDS.getOrDefault(siteId, new double[]{0.0, 0.0});
@@ -197,41 +207,40 @@ public class RiskService {
 
     /**
      * Rule-weighted risk score (0-100).
-     * Transparent inputs: incident frequency, severity mix, audit recency, rejection rate, pressure spikes.
+     *
+     * Components and weights:
+     *   - Incident frequency  (0.30): normalized against a ceiling of 200 incidents → 100pts
+     *   - Severity mix        (0.30): ratio of Critical+High incidents to total, × 100
+     *   - Audit recency       (0.20): days since last audit, normalized against 180-day ceiling
+     *   - Rejection rate      (0.10): % of incidents rejected, amplified 5×
+     *   - Pressure spikes     (0.10): spike count normalized against a ceiling of 10 → 100pts
+     *
+     * Transparent: every component is traceable to a raw data field.
      */
-    private int computeRiskScore(long incidentCount, Map<String, Long> decisions,
+    private int computeRiskScore(long incidentCount, long criticalHighCount,
                                   int daysSinceAudit, double rejectedRate, int pressureSpikes) {
-        // Component weights (sum to 1.0)
-        double incidentWeight = 0.25;
-        double severityWeight = 0.20;
-        double auditWeight = 0.15;
-        double rejectionWeight = 0.20;
-        double telemetryWeight = 0.20;
+        // Incident frequency: 200+ incidents = max score for this component
+        double incidentScore = Math.min(incidentCount / 2.0, 100.0);
 
-        // Incident frequency score (0-100): more incidents = higher risk
-        double incidentScore = Math.min(incidentCount * 7.0, 100.0);
+        // Severity mix: fraction of incidents that are Critical or High severity
+        double severityScore = incidentCount > 0
+                ? Math.min((criticalHighCount * 100.0) / incidentCount, 100.0)
+                : 0.0;
 
-        // Severity mix: ratio of Critical+High to total
-        long criticalHigh = decisions.getOrDefault("rejected", 0L)
-                + decisions.getOrDefault("review", 0L);
-        long total = decisions.values().stream().mapToLong(Long::longValue).sum();
-        double severityScore = total > 0 ? (criticalHigh * 100.0 / total) : 0.0;
+        // Audit recency: 180-day absence = max score; fresh audit (0d) = 0 score
+        double auditScore = Math.min(daysSinceAudit / 1.8, 100.0);
 
-        // Audit recency: more days since audit = higher risk
-        double auditScore = Math.min(daysSinceAudit * 4.0, 100.0);
+        // Rejection rate: amplified — even 20% rejection is a strong signal
+        double rejectionScore = Math.min(rejectedRate * 500.0, 100.0);
 
-        // Rejection rate: direct map to 0-100
-        double rejectionScore = rejectedRate * 100.0 * 3.0; // amplify
-        rejectionScore = Math.min(rejectionScore, 100.0);
+        // Pressure spikes: 10+ spikes = max score
+        double telemetryScore = Math.min(pressureSpikes * 10.0, 100.0);
 
-        // Telemetry: pressure spikes as leading indicator
-        double telemetryScore = Math.min(pressureSpikes * 20.0, 100.0);
-
-        double composite = (incidentScore * incidentWeight)
-                + (severityScore * severityWeight)
-                + (auditScore * auditWeight)
-                + (rejectionScore * rejectionWeight)
-                + (telemetryScore * telemetryWeight);
+        double composite = (incidentScore  * 0.30)
+                         + (severityScore  * 0.30)
+                         + (auditScore     * 0.20)
+                         + (rejectionScore * 0.10)
+                         + (telemetryScore * 0.10);
 
         return (int) Math.min(Math.max(Math.round(composite), 0), 100);
     }

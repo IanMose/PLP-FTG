@@ -8,4 +8,4 @@
 -- VARCHAR(40) which comfortably covers all current and anticipated ID formats.
 -- (fact_telemetry.reading_id is already VARCHAR(50) from V5 — no change needed.)
 
-ALTER TABLE fact_environmental ALTER COLUMN reading_id VARCHAR(40) NOT NULL;
+ALTER TABLE fact_environmental ALTER COLUMN reading_id TYPE VARCHAR(40);
