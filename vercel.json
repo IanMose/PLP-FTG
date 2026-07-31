@@ -1,4 +1,6 @@
 {
-  "rootDirectory": "sentinel-frontend",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "buildCommand": "cd sentinel-frontend && pnpm run build",
+  "installCommand": "cd sentinel-frontend && pnpm install",
+  "outputDirectory": "sentinel-frontend/.next"
 }
