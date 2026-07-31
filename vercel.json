@@ -1,5 +1,5 @@
 {
-  "installCommand": "corepack enable && corepack prepare pnpm@9.15.0 --activate && cd sentinel-frontend && pnpm install",
+  "installCommand": "corepack enable && corepack prepare pnpm@9.15.0 --activate && cd sentinel-frontend && pnpm install --no-frozen-lockfile",
   "buildCommand": "cd sentinel-frontend && pnpm run build",
   "outputDirectory": "sentinel-frontend/.next",
   "framework": "nextjs"
