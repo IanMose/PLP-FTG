@@ -50,6 +50,7 @@ sentinel:
     # Adjust if your sentinel/ folder lives elsewhere relative to sentinel-backend/
     live-batch-path: ${ETL_LIVE_BATCH_PATH:../sentinel/data/warehouse/live_batch.json}
     sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}   # root of the Python project (contains run_live.sh)
+    api-key: ${ETL_API_KEY:}
 
     # ── Timing & volume ─────────────────────────────────────────────────────
     poll-interval-ms: 120000         # 2 minutes

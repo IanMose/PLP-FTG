@@ -63,3 +63,9 @@ services:
       # ── ETL — disabled in production (no Python runtime on this service) ─
       - key: ETL_ENABLED
         value: "false"
+
+      # ── ETL Push API Key — must match ETL_API_KEY GitHub Actions secret ──
+      # Generate with: openssl rand -base64 32
+      # Set the same value in GitHub → Settings → Secrets → Actions → ETL_API_KEY
+      - key: ETL_API_KEY
+        value: REPLACE_WITH_STRONG_RANDOM_KEY

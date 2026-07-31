@@ -474,14 +474,82 @@ def _df_to_records(df: pd.DataFrame) -> list:
     return [{k: _clean_value(val) for k, val in row.items()} for row in records]
 
 
+def push_to_backend(export_path: Path, push_url: str, api_key: str, verbose: bool = True) -> bool:
+    """
+    POST the live_batch.json payload to the Spring Boot backend's /api/etl/push endpoint.
+
+    Returns True on success, False on failure.
+    """
+    import urllib.request
+    import urllib.error
+
+    def log(msg):
+        if verbose:
+            print(msg)
+
+    try:
+        with open(export_path, "rb") as f:
+            payload = f.read()
+
+        req = urllib.request.Request(
+            url=push_url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-ETL-Api-Key": api_key,
+            },
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode()
+            log(f"[PUSH] {resp.status} OK → {push_url}")
+            log(f"[PUSH] Response: {body}")
+            return True
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        log(f"[PUSH] HTTP {e.code} error → {push_url}: {body}")
+        return False
+    except Exception as e:
+        log(f"[PUSH] Failed to push to backend: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sentinel Live ETL — single run")
     parser.add_argument("--rows", type=int, default=50,
                         help="Number of new rows to generate per run (default: 50)")
     parser.add_argument("--quiet", action="store_true", help="Suppress output")
+    parser.add_argument(
+        "--push-url",
+        default=os.environ.get("ETL_PUSH_URL", ""),
+        help="If set, POST live_batch.json to this URL after the pipeline runs "
+             "(e.g. https://sentinel-backend.onrender.com/api/etl/push). "
+             "Can also be set via ETL_PUSH_URL env var.",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("ETL_API_KEY", ""),
+        help="API key sent as X-ETL-Api-Key header when --push-url is used. "
+             "Can also be set via ETL_API_KEY env var.",
+    )
     args = parser.parse_args()
 
     summary = run(n_rows=args.rows, verbose=not args.quiet)
+
+    # ── Push to backend if URL is configured ─────────────────────────────────
+    if args.push_url:
+        export_path = WAREHOUSE_DIR / "live_batch.json"
+        if export_path.exists():
+            success = push_to_backend(export_path, args.push_url, args.api_key, verbose=not args.quiet)
+            if not success:
+                # Exit with error code so GitHub Actions marks the step as failed
+                sys.exit(1)
+        else:
+            print(f"[PUSH] live_batch.json not found at {export_path} — skipping push")
+            sys.exit(1)
+
     if not args.quiet:
         print(f"\nDone. batch_id={summary['batch_id'][:8]}...")
 
