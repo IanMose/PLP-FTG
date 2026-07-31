@@ -5,10 +5,10 @@ const currentYear = new Date().getFullYear();
 export const APP_CONFIG = {
   name: "Sentinel",
   version: packageJson.version,
-  copyright: `© ${currentYear}, Sentinel.`,
+  copyright: `© ${currentYear}, FTG — Future Technology Growth.`,
   meta: {
-    title: "Sentinel - Modern Next.js Dashboard Starter Template",
+    title: "Sentinel | HSE Early Warning Detection System",
     description:
-      "Sentinel is a modern, open-source dashboard starter template built with Next.js 16, Tailwind CSS v4, and shadcn/ui. Perfect for SaaS apps, admin panels, and internal tools—fully customizable and production-ready.",
+      "Sentinel is an HSE early warning detection system built by FTG. Monitor pipeline telemetry, audit findings, and incident data in real time to surface risks before they escalate.",
   },
 };
