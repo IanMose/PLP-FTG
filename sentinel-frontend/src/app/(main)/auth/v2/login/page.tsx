@@ -1,45 +1,46 @@
-import Link from "next/link";
-
-import { Globe } from "lucide-react";
+import Image from "next/image";
 
 import { APP_CONFIG } from "@/config/app-config";
+import { FtgLogo } from "@/components/ftg-logo";
 
 import { LoginForm } from "../../_components/login-form";
-import { GoogleButton } from "../../_components/social-auth/google-button";
 
 export default function LoginV2() {
   return (
-    <>
-      <div className="mx-auto flex w-full flex-col justify-center space-y-8 sm:w-[350px]">
-        <div className="space-y-2 text-center">
-          <h1 className="font-medium text-3xl">Login to your account</h1>
-          <p className="text-muted-foreground text-sm">Please enter your details to login.</p>
+    <div className="flex h-full w-full flex-col">
+      <div className="flex items-center gap-3 px-6 pt-6">
+        <Image
+          src="/sentinel-logo-v2.png"
+          alt="Sentinel Logo"
+          width={44}
+          height={44}
+          className="object-contain rounded-lg"
+        />
+        <div>
+          <h2 className="font-bold text-lg leading-tight">{APP_CONFIG.name}</h2>
+          <p className="text-muted-foreground text-xs">HSE Early Warning Detection System</p>
         </div>
-        <div className="space-y-4">
-          <GoogleButton className="w-full" />
-          <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-border after:border-t">
-            <span className="relative z-10 bg-background px-2 text-muted-foreground">Or continue with</span>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center px-6">
+        <div className="w-full max-w-[360px] space-y-8">
+          <div className="space-y-1 text-center">
+            <h1 className="font-semibold text-2xl tracking-tight">Welcome back</h1>
+            <p className="text-muted-foreground text-sm">Enter your credentials to continue.</p>
           </div>
+
           <LoginForm />
-        </div>
-      </div>
 
-      <div className="absolute top-5 flex w-full justify-end px-10">
-        <div className="text-muted-foreground text-sm">
-          Don&apos;t have an account?{" "}
-          <Link prefetch={false} className="text-foreground" href="register">
-            Register
-          </Link>
+          <div className="flex items-center gap-3 border-t pt-4">
+            <p className="w-4/5 text-muted-foreground text-xs leading-relaxed">
+              Developed by <span className="font-medium text-foreground">FTG</span> — Future • Technology • Growth
+            </p>
+            <div className="w-1/5 flex justify-end">
+              <FtgLogo className="h-5 w-auto" />
+            </div>
+          </div>
         </div>
       </div>
-
-      <div className="absolute bottom-5 flex w-full justify-between px-10">
-        <div className="text-sm">{APP_CONFIG.copyright}</div>
-        <div className="flex items-center gap-1 text-sm">
-          <Globe className="size-4 text-muted-foreground" />
-          ENG
-        </div>
-      </div>
-    </>
+    </div>
   );
 }

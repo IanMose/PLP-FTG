@@ -26,15 +26,38 @@ spring:
       path: /h2-console
 
 server:
-  port: 8080
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
 
 # CORS configuration for frontend
 sentinel:
   cors:
-    allowed-origins: http://localhost:3000,http://localhost:3001
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+  jwt:
+    secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+    expiration-ms: 86400000  # 24 hours
+  etl:
+    enabled: ${ETL_ENABLED:true}
+    # Path to the JSON written by sentinel/src/run_pipeline.py
+    # Adjust if your sentinel/ folder lives elsewhere relative to sentinel-backend/
+    live-batch-path: ${ETL_LIVE_BATCH_PATH:../sentinel/data/warehouse/live_batch.json}
+    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}   # root of the Python project (contains run_live.sh)
+
+    # ── Timing & volume ─────────────────────────────────────────────────────
+    poll-interval-ms: 120000         # 2 minutes
+    rows-per-cycle: 200
+    frontend-refresh-ms: 125000      # 2 min 5 s
 
 ---
-# PostgreSQL profile
+# PostgreSQL profile (local dev with explicit postgres activation)
 spring:
   config:
     activate:
@@ -52,3 +75,6 @@ spring:
   h2:
     console:
       enabled: false
+
+# Render production config lives in application-render.yml
+# (activated by SPRING_PROFILES_ACTIVE=render set in render.yaml)

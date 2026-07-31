@@ -7,11 +7,6 @@ __pycache__/
 venv/
 *.egg-info/
 
-# === Java / Maven ===
-target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
 
 # === IDE ===
 .idea/
@@ -38,12 +33,12 @@ dist/
 .DS_Store
 Thumbs.db
 
-# === Data / warehouse artifacts ===
-sentinel/data/raw/
-sentinel/data/warehouse/*.duckdb
-sentinel/data/warehouse/*.parquet
-sentinel/data/warehouse/*.json
-sentinel/data/quarantine/
-
 # === Logs ===
 *.log
+
+# md files #
+Sentinel_Repo_Setup_Guide.md
+sentinel-frontend/CLEANUP_AUDIT.md
+docs/current-stage-validation-report.md
+docs/stage2-alert-gaps-backlog.md
+sentinel-system-summary.md 

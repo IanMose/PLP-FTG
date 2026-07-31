@@ -25,10 +25,10 @@ from src.transform import normalize_severity, SEVERITY_LOOKUP
 RECOVERABLE_RULES = {"valid_severity", "score_bounds"}
 
 # Rules that are ambiguous and need human review
-REVIEW_RULES = {"date_order"}
+REVIEW_RULES = {"date_order", "valid_pressure", "sensor_readings"}
 
 # Rules that are hard failures — record must be rejected
-HARD_FAIL_RULES = {"no_future_incidents", "uniqueness"}
+HARD_FAIL_RULES = {"no_future_incidents", "uniqueness", "valid_coordinates"}
 
 
 def attempt_correction(row: pd.Series, failed_rules: list[str]) -> tuple[pd.Series, list[str]]:

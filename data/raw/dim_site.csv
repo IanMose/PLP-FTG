@@ -1,0 +1,7 @@
+site_code,site_name,region,asset_type
+SITE-001,Nairobi Terminal,Nairobi,Terminal
+SITE-002,Mombasa Terminal,Mombasa,Terminal
+SITE-003,Makueni Pump Station,Makueni,Pump Station
+SITE-004,Nakuru Depot,Nakuru,Depot
+SITE-005,Eldoret Depot,Uasin Gishu,Depot
+SITE-006,Sinendet Pump Station,Bomet,Pump Station
