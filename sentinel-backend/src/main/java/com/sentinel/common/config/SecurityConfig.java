@@ -64,6 +64,7 @@ public class SecurityConfig {
                 // Public endpoints — auth flows, API docs, and health check
                 .requestMatchers(
                     "/api/auth/**",
+                    "/actuator/health",
                     "/h2-console/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",

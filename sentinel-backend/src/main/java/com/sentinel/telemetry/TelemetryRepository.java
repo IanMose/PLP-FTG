@@ -9,7 +9,7 @@ public interface TelemetryRepository extends JpaRepository<TelemetryEntity, Stri
 
     List<TelemetryEntity> findBySiteOrderByTimestampDesc(String site);
 
-    @Query("SELECT t.site, COUNT(t) FROM TelemetryEntity t WHERE t.pressurePsi > 1000 OR t.pressurePsi < 0 GROUP BY t.site")
+    @Query("SELECT t.site, COUNT(t) FROM TelemetryEntity t WHERE t.pressurePsi > 800 OR t.pressurePsi < 0 GROUP BY t.site")
     List<Object[]> countPressureSpikesBySite();
 
     @Query("SELECT t.site, COUNT(t) FROM TelemetryEntity t GROUP BY t.site")

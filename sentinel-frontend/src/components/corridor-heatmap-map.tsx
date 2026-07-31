@@ -161,6 +161,8 @@ function buildPopupHtml(p: HeatPoint, meta?: CorridorAsset): string {
 
 interface Removable {
   remove: () => void;
+  // biome-ignore lint/suspicious/noExplicitAny: leaflet.heat returns a dynamic layer
+  addTo: (map: any) => this;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
