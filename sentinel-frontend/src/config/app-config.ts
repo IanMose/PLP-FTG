@@ -7,8 +7,8 @@ export const APP_CONFIG = {
   version: packageJson.version,
   copyright: `© ${currentYear}, Sentinel.`,
   meta: {
-    title: "Sentinel - Modern Next.js Dashboard Starter Template",
+    title: "Sentinel — HSE Risk & Data Quality Platform",
     description:
-      "Sentinel is a modern, open-source dashboard starter template built with Next.js 16, Tailwind CSS v4, and shadcn/ui. Perfect for SaaS apps, admin panels, and internal tools—fully customizable and production-ready.",
+      "Sentinel is a real-time HSE risk monitoring and data quality platform for pipeline operations. Track incidents, audits, telemetry, and corridor risk across your pipeline network.",
   },
 };
