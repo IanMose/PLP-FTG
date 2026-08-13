@@ -1,9 +1,13 @@
 package com.sentinel.compliance;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * REST API for the Compliance Intelligence Module.
@@ -45,7 +49,7 @@ public class ComplianceController {
     }
 
     /**
-     * GET /api/compliance/violations?siteId=kpc-msa
+     * GET /api/compliance/violations?siteId=site-002
      * Open compliance violations. siteId is optional — omit for all sites.
      * Used by: violations table widget.
      */
@@ -56,7 +60,7 @@ public class ComplianceController {
     }
 
     /**
-     * GET /api/compliance/trend?siteId=kpc-nbi
+     * GET /api/compliance/trend?siteId=site-001
      * 12-week compliance trend. siteId optional — omit for network average.
      * Used by: compliance trend chart.
      */
