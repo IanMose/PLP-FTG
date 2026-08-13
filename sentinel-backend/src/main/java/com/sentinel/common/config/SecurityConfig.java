@@ -67,7 +67,8 @@ public class SecurityConfig {
                     "/actuator/health",
                     "/h2-console/**",
                     "/swagger-ui/**",
-                    "/v3/api-docs/**"
+                    "/v3/api-docs/**",
+                    "/actuator/health"
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
                 // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)
