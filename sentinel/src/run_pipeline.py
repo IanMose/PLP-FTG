@@ -400,8 +400,30 @@ def run(n_rows: int = 50, verbose: bool = True) -> dict:
     # ── Write JSON export for Spring Boot scheduler to consume ───────────────
     log("[6/6] Writing JSON export for backend reload...")
     _write_json_export(decided_df, corridor_rows, mgr.batch_id, ts)
-    log(f"{'='*55}")
 
+    # ── Stage 6: Score predictions (fast — reads cached features, skips rebuild) ──
+    # Feature engineering (180-day build, ~70s) and diagnostics (~60s) are ONLY
+    # run in run_full_etl.sh to avoid blocking the 2-minute live loop.
+    # The live loop just re-scores using the existing fact_site_features.parquet.
+    features_path = WAREHOUSE_DIR / "fact_site_features.parquet"
+    model_path    = Path("models/logreg_v1.pkl")
+
+    if features_path.exists() and model_path.exists():
+        log("[7/7] Scoring site predictions (cached features)...")
+        try:
+            from src.predict import load_model, score_current_sites, write_predictions_json
+            features_df = pd.read_parquet(features_path)
+            pipe = load_model(model_path)
+            preds_df = score_current_sites(features_df, pipe)
+            preds_df.to_parquet(WAREHOUSE_DIR / "fact_predictions.parquet", index=False)
+            write_predictions_json(preds_df, WAREHOUSE_DIR)
+            log(f"      → {len(preds_df)} site scores → fact_predictions.parquet")
+        except Exception as exc:
+            log(f"      WARNING: Scoring failed — {exc}")
+    else:
+        log("[7/7] Scoring skipped — run 'run_full_etl.sh' first to build features + train model")
+
+    log(f"{'='*55}")
     return {
         "batch_id":   mgr.batch_id,
         "timestamp":  ts,

@@ -22,6 +22,10 @@ export interface SiteRiskSummary {
   daysSinceLastAudit: number;
   correctedRate: number;
   rejectedRate: number;
+  /** ML model: probability of a Critical incident in the next 7 days (0.0–1.0). Null if model not trained. */
+  incidentProbability7d?: number | null;
+  /** Risk band derived from model probability: HIGH / MODERATE / LOW / UNKNOWN */
+  modelRiskBand?: string | null;
 }
 
 // Alerts
@@ -129,4 +133,104 @@ export interface SiteDetail {
   incidents: Incident[];
   audits: Audit[];
   telemetryReadings: TelemetryReading[];
+}
+
+// ── Analytics / Diagnostics ──────────────────────────────────────────────────
+
+export interface SurvivalCurvePoint {
+  t: number;
+  survival: number | null;
+}
+
+export interface SurvivalCurveData {
+  fleet_median_days: number;
+  high_risk_median_days: number;
+  fleet_closure_rate: number;
+  high_risk_closure_rate: number;
+  ratio: number | null;
+  quotable: string;
+  note?: string;
+  n_fleet: number;
+  n_high_risk: number;
+  curves: {
+    fleet: SurvivalCurvePoint[];
+    high_risk: SurvivalCurvePoint[];
+  };
+}
+
+export interface ControlChartReading {
+  timestamp: string;
+  pressure: number;
+  ewma: number;
+  ucl: number;
+  lcl: number;
+  drift_flag: boolean;
+  spike: boolean;
+}
+
+export interface DriftEvent {
+  spike_timestamp: string;
+  spike_pressure: number;
+  days_before_spike: number;
+  drift_flag_at: string | null;
+}
+
+export interface SiteControlChart {
+  site_id: string;
+  grand_mean: number;
+  ucl: number;
+  lcl: number;
+  n_readings: number;
+  n_drift_flags: number;
+  n_spikes: number;
+  lead_time_days: number;
+  readings: ControlChartReading[];
+  drift_events: DriftEvent[];
+}
+
+export interface ControlChartData {
+  fleet_avg_lead_time_days: number;
+  quotable: string;
+  ewma_lambda: number;
+  ewma_L: number;
+  sites: Record<string, SiteControlChart>;
+}
+
+export interface CorrelationScatterPoint {
+  site_id: string;
+  site_name: string;
+  rejection_rate_30d: number;
+  incident_count_30d: number;
+  band: string;
+}
+
+export interface CorrelationData {
+  pearson_r: number;
+  p_value: number;
+  n_sites: number;
+  interpretation: string;
+  quotable: string;
+  scatter_points: CorrelationScatterPoint[];
+}
+
+export interface FeatureImportanceItem {
+  name: string;
+  importance: number;
+  direction: "positive" | "negative";
+  coefficient: number;
+}
+
+export interface FeatureImportanceData {
+  model_version: string;
+  label_definition: string;
+  features: FeatureImportanceItem[];
+}
+
+export interface PredictionDto {
+  siteId: string;
+  asOfDate: string;
+  probability: number;
+  riskBand: string;
+  modelVersion: string;
+  topFeatures: string | null;
 }
