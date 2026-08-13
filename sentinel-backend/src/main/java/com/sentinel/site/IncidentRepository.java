@@ -26,9 +26,9 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
 
     /** Projection interface for aggregate incident scalars per site. */
     interface SiteIncidentScalars {
-        long getTotal();
-        long getCritHigh();
-        long getRejected();
+        Long getTotal();    // COUNT — never null, but boxed for consistency
+        Long getCritHigh(); // SUM — returns null when no rows match
+        Long getRejected(); // SUM — returns null when no rows match
     }
 
     /**

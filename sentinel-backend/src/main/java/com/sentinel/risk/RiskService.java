@@ -217,9 +217,9 @@ public class RiskService {
      */
     private double[] loadLiveScalars(String siteId) {
         IncidentRepository.SiteIncidentScalars inc = incidentRepository.getScalarsForSite(siteId);
-        long total    = inc != null ? inc.getTotal()    : 0L;
-        long critHigh = inc != null ? inc.getCritHigh() : 0L;
-        long rejected = inc != null ? inc.getRejected() : 0L;
+        long total    = inc != null && inc.getTotal()    != null ? inc.getTotal()    : 0L;
+        long critHigh = inc != null && inc.getCritHigh() != null ? inc.getCritHigh() : 0L;
+        long rejected = inc != null && inc.getRejected() != null ? inc.getRejected() : 0L;
 
         LocalDateTime lastAudit = auditRepository.findLatestAuditDateForSite(siteId);
         int daysSince = lastAudit != null

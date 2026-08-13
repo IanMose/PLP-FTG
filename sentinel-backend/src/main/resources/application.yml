@@ -13,16 +13,25 @@ spring:
     hibernate:
       # create-drop: Hibernate creates the schema from @Entity classes on startup
       # and drops it on shutdown. Flyway is not used for the H2 dev profile.
-      # Seed data is handled entirely by DataSeeder (ApplicationRunner).
+      # Seed data is handled by DataSeeder (roles/users) and data-h2.sql (sites).
       ddl-auto: create-drop
     show-sql: false
     open-in-view: false
+    defer-datasource-initialization: true  # ensures JPA creates tables before data-h2.sql runs
 
   # Flyway is disabled for H2 local dev — migrations use PostgreSQL syntax
   # (ON CONFLICT) that H2 does not fully support. Schema is managed by JPA.
   # Flyway remains enabled on the render profile (application-render.yml).
   flyway:
     enabled: false
+
+  # Seed the 7 KPC sites after JPA creates the schema (create-drop).
+  # Spring runs data-h2.sql once per startup — safe because create-drop
+  # drops all tables on shutdown, so the inserts are always against a fresh schema.
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data-h2.sql
 
   h2:
     console:
