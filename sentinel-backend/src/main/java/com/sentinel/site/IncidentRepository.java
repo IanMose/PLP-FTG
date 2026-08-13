@@ -23,4 +23,24 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
     /** Returns the subset of the given IDs that already exist — one query for a whole batch. */
     @Query("SELECT i.incidentId FROM IncidentEntity i WHERE i.incidentId IN :ids")
     Set<String> findExistingIds(@Param("ids") Set<String> ids);
+
+    /** Projection interface for aggregate incident scalars per site. */
+    interface SiteIncidentScalars {
+        long getTotal();
+        long getCritHigh();
+        long getRejected();
+    }
+
+    /**
+     * Returns aggregate incident counts for a single site in one query.
+     * Used by the simulate path — avoids loading the full incident collection.
+     */
+    @Query("""
+        SELECT COUNT(i) AS total,
+               SUM(CASE WHEN i.severity IN ('Critical', 'High') THEN 1 ELSE 0 END) AS critHigh,
+               SUM(CASE WHEN i.decision = 'rejected' THEN 1 ELSE 0 END) AS rejected
+        FROM IncidentEntity i
+        WHERE i.siteId = :siteId
+        """)
+    SiteIncidentScalars getScalarsForSite(@Param("siteId") String siteId);
 }
