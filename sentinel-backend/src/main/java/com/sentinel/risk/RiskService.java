@@ -5,6 +5,8 @@ import com.sentinel.common.dto.SiteRiskSummaryDto;
 import com.sentinel.common.dto.IncidentDto;
 import com.sentinel.common.dto.AuditDto;
 import com.sentinel.common.dto.TelemetryReadingDto;
+import com.sentinel.risk.dto.RiskSimulateRequestDto;
+import com.sentinel.risk.dto.RiskSimulateResponseDto;
 import com.sentinel.site.*;
 import com.sentinel.telemetry.TelemetryService;
 import org.springframework.stereotype.Service;
@@ -210,6 +212,85 @@ public class RiskService {
     }
 
     /**
+     * Loads the 5 live scalar inputs for a site using lightweight aggregate queries.
+     * Returns a double[] array: [incidentCount, critHigh, daysSinceAudit, rejectedRate, spikes]
+     */
+    private double[] loadLiveScalars(String siteId) {
+        IncidentRepository.SiteIncidentScalars inc = incidentRepository.getScalarsForSite(siteId);
+        long total    = inc != null ? inc.getTotal()    : 0L;
+        long critHigh = inc != null ? inc.getCritHigh() : 0L;
+        long rejected = inc != null ? inc.getRejected() : 0L;
+
+        LocalDateTime lastAudit = auditRepository.findLatestAuditDateForSite(siteId);
+        int daysSince = lastAudit != null
+                ? (int) ChronoUnit.DAYS.between(lastAudit.toLocalDate(), LocalDate.now())
+                : 365;
+
+        int spikes = telemetryService.getSpikeCountForSite(siteId);
+        double rejectedRate = total > 0 ? (double) rejected / total : 0.0;
+
+        return new double[]{ total, critHigh, daysSince, rejectedRate, spikes };
+    }
+
+    /**
+     * Simulates the risk score with optional overrides applied to live values.
+     * No data is persisted. Used by POST /api/sites/{siteId}/simulate.
+     */
+    public RiskSimulateResponseDto simulateScore(String siteId, RiskSimulateRequestDto req) {
+        double[] live = loadLiveScalars(siteId);
+        long   liveTotal    = (long)   live[0];
+        long   liveCritHigh = (long)   live[1];
+        int    liveDays     = (int)    live[2];
+        double liveRejRate  =          live[3];
+        int    liveSpikes   = (int)    live[4];
+
+        int currentScore = computeRiskScore(liveTotal, liveCritHigh, liveDays, liveRejRate, liveSpikes);
+
+        // Apply overrides — null means keep live value
+        long incidents = req.getIncidentCountOverride() != null
+                ? req.getIncidentCountOverride() : liveTotal;
+        // critHighPercent is 0-100; convert to count against the simulated incident total
+        long critHigh = req.getCritHighPercentOverride() != null
+                ? Math.round(incidents * req.getCritHighPercentOverride() / 100.0) : liveCritHigh;
+        int auditDays = req.getDaysSinceAuditOverride() != null
+                ? req.getDaysSinceAuditOverride() : liveDays;
+        double rejection = req.getRejectionRateOverride() != null
+                ? req.getRejectionRateOverride() : liveRejRate;
+        int spikes = req.getPressureSpikesOverride() != null
+                ? req.getPressureSpikesOverride() : liveSpikes;
+
+        // Per-component weighted contributions
+        double incContrib   = Math.min(incidents / 2.0, 100.0)                                * 0.30;
+        double sevContrib   = incidents > 0 ? Math.min(critHigh * 100.0 / incidents, 100.0) * 0.30 : 0.0;
+        double audContrib   = Math.min(auditDays / 1.8, 100.0)                                * 0.20;
+        double rejContrib   = Math.min(rejection * 500.0, 100.0)                              * 0.10;
+        double spikeContrib = Math.min(spikes * 10.0, 100.0)                                  * 0.10;
+
+        int simScore = computeRiskScore(incidents, critHigh, auditDays, rejection, spikes);
+
+        int liveCritHighPct = liveTotal > 0
+                ? (int) Math.round(liveCritHigh * 100.0 / liveTotal) : 0;
+
+        return RiskSimulateResponseDto.builder()
+                .currentScore(currentScore)
+                .currentBand(scoreToSeverityBand(currentScore))
+                .simulatedScore(simScore)
+                .simulatedBand(scoreToSeverityBand(simScore))
+                .scoreDelta(simScore - currentScore)
+                .incidentFrequencyContrib(Math.round(incContrib   * 100.0) / 100.0)
+                .severityMixContrib      (Math.round(sevContrib   * 100.0) / 100.0)
+                .auditRecencyContrib     (Math.round(audContrib   * 100.0) / 100.0)
+                .rejectionRateContrib    (Math.round(rejContrib   * 100.0) / 100.0)
+                .pressureSpikesContrib   (Math.round(spikeContrib * 100.0) / 100.0)
+                .liveDaysSinceAudit(liveDays)
+                .liveIncidentCount((int) liveTotal)
+                .liveCritHighPercent(liveCritHighPct)
+                .liveRejectionRate(Math.round(liveRejRate * 10000.0) / 10000.0)
+                .livePressureSpikes(liveSpikes)
+                .build();
+    }
+
+    /**
      * Rule-weighted risk score (0-100).
      *
      * Components and weights:
@@ -221,7 +302,7 @@ public class RiskService {
      *
      * Transparent: every component is traceable to a raw data field.
      */
-    private int computeRiskScore(long incidentCount, long criticalHighCount,
+    int computeRiskScore(long incidentCount, long criticalHighCount,
                                   int daysSinceAudit, double rejectedRate, int pressureSpikes) {
         // Incident frequency: 200+ incidents = max score for this component
         double incidentScore = Math.min(incidentCount / 2.0, 100.0);
