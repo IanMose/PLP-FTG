@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DecisionOutcome, SeverityBand, SiteDetail } from "@/lib/sentinel/types";
 import { cn } from "@/lib/utils";
+import { RiskScoreBreakdown } from "./risk-score-breakdown";
+import { WhatIfPanel } from "./what-if-panel";
 
 interface SiteDetailViewProps {
   site: SiteDetail;
@@ -72,6 +74,29 @@ export function SiteDetailView({ site }: SiteDetailViewProps) {
             Score: {site.riskScore}/100
           </Badge>
         </div>
+      </div>
+
+      {/* Risk Analysis — Breakdown + What-If */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RiskScoreBreakdown
+          riskScore={site.riskScore}
+          severityBand={site.severityBand}
+          incidentCount={site.incidentCount}
+          critHighCount={site.critHighCount}
+          daysSinceAudit={site.daysSinceAudit}
+          rejectedRate={site.rejectedRate}
+          pressureSpikeCount={site.pressureSpikeCount}
+        />
+        <WhatIfPanel
+          siteId={site.siteId}
+          currentScore={site.riskScore}
+          currentBand={site.severityBand}
+          liveIncidentCount={site.incidentCount}
+          liveCritHighCount={site.critHighCount}
+          liveDaysSinceAudit={site.daysSinceAudit}
+          liveRejectedRate={site.rejectedRate}
+          livePressureSpikes={site.pressureSpikeCount}
+        />
       </div>
 
       {/* Incidents Timeline */}
