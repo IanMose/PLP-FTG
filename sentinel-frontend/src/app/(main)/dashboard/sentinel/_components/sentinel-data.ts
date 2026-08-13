@@ -23,6 +23,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 21,
     correctedRate: 0.12,
     rejectedRate: 0.18,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-002",
@@ -34,6 +37,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 12,
     correctedRate: 0.08,
     rejectedRate: 0.1,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-003",
@@ -45,6 +51,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 7,
     correctedRate: 0.05,
     rejectedRate: 0.03,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-004",
@@ -56,6 +65,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 4,
     correctedRate: 0.02,
     rejectedRate: 0.01,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-005",
@@ -67,6 +79,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 17,
     correctedRate: 0.09,
     rejectedRate: 0.14,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-006",
@@ -78,6 +93,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 3,
     correctedRate: 0.04,
     rejectedRate: 0.02,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-007",
@@ -89,6 +107,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 10,
     correctedRate: 0.06,
     rejectedRate: 0.07,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-008",
@@ -100,6 +121,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 2,
     correctedRate: 0.01,
     rejectedRate: 0.0,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-009",
@@ -111,6 +135,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 24,
     correctedRate: 0.15,
     rejectedRate: 0.22,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-010",
@@ -122,6 +149,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 8,
     correctedRate: 0.04,
     rejectedRate: 0.05,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-011",
@@ -133,6 +163,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 14,
     correctedRate: 0.07,
     rejectedRate: 0.09,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
   {
     siteId: "site-012",
@@ -144,6 +177,9 @@ export const mockSites: SiteRiskSummary[] = [
     daysSinceLastAudit: 1,
     correctedRate: 0.01,
     rejectedRate: 0.0,
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
   },
 ];
 
@@ -326,6 +362,14 @@ const mockSiteDetails: Record<string, SiteDetail> = {
     location: "Melbourne, VIC",
     riskScore: 82,
     severityBand: "Critical",
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
+    incidentCount: 0,
+    critHighCount: 0,
+    daysSinceAudit: 365,
+    rejectedRate: 0,
+    telemetryReadings: [],
     incidents: [
       {
         incidentId: "INC-2026-0398",
@@ -396,6 +440,14 @@ const mockSiteDetails: Record<string, SiteDetail> = {
     location: "Gold Coast, QLD",
     riskScore: 88,
     severityBand: "Critical",
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
+    incidentCount: 0,
+    critHighCount: 0,
+    daysSinceAudit: 365,
+    rejectedRate: 0,
+    telemetryReadings: [],
     incidents: [
       {
         incidentId: "INC-2026-0441",
@@ -455,6 +507,14 @@ export function getMockSiteDetail(siteId: string): SiteDetail {
     location: "Unknown",
     riskScore: site?.riskScore ?? 0,
     severityBand: site?.severityBand ?? "Low",
+    latitude: 0,
+    longitude: 0,
+    pressureSpikeCount: 0,
+    incidentCount: 0,
+    critHighCount: 0,
+    daysSinceAudit: 365,
+    rejectedRate: 0,
+    telemetryReadings: [],
     incidents: [],
     audits: [],
   };

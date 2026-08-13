@@ -17,10 +17,15 @@ import type {
   ComplianceSummary,
   ComplianceTrendPoint,
   ComplianceViolation,
+  ControlChartData,
+  CorrelationData,
   DataQualitySummary,
+  FeatureImportanceData,
   IngestBatch,
+  PredictionDto,
   SiteDetail,
   SiteRiskSummary,
+  SurvivalCurveData,
   TelemetrySummary,
   WhatIfRequest,
   WhatIfResponse,
@@ -41,6 +46,9 @@ function requireApiBase(): string {
 }
 
 const TIMEOUT_MS = 15_000;
+
+/** Simple fetch options for public/mock-fallback compliance endpoints. */
+const fetchOpts: RequestInit = { cache: "no-store" };
 
 /**
  * Returns an AbortSignal that fires after TIMEOUT_MS.
@@ -340,4 +348,67 @@ export async function fetchComplianceTrend(
     );
     return mockComplianceTrend;
   }
+}
+
+// ─── Analytics (Stage C / D diagnostics) ─────────────────────────────────────
+
+/** GET /api/analytics/survival-curves */
+export async function fetchSurvivalCurves(): Promise<SurvivalCurveData> {
+  const res = await fetch(`${requireApiBase()}/api/analytics/survival-curves`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** GET /api/analytics/pressure-charts */
+export async function fetchPressureCharts(): Promise<ControlChartData> {
+  const res = await fetch(`${requireApiBase()}/api/analytics/pressure-charts`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** GET /api/analytics/correlation */
+export async function fetchCorrelation(): Promise<CorrelationData> {
+  const res = await fetch(`${requireApiBase()}/api/analytics/correlation`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** GET /api/analytics/feature-importance */
+export async function fetchFeatureImportance(): Promise<FeatureImportanceData> {
+  const res = await fetch(`${requireApiBase()}/api/analytics/feature-importance`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** GET /api/sites/predictions */
+export async function fetchPredictions(): Promise<PredictionDto[]> {
+  const res = await fetch(`${requireApiBase()}/api/sites/predictions`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** GET /api/sites/{siteId}/prediction */
+export async function fetchSitePrediction(siteId: string): Promise<PredictionDto | null> {
+  const res = await fetch(`${requireApiBase()}/api/sites/${siteId}/prediction`, {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }

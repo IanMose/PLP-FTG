@@ -2,6 +2,8 @@ package com.sentinel.risk;
 
 import com.sentinel.common.dto.SiteDetailDto;
 import com.sentinel.common.dto.SiteRiskSummaryDto;
+import com.sentinel.prediction.PredictionDto;
+import com.sentinel.prediction.PredictionService;
 import com.sentinel.risk.dto.RiskSimulateRequestDto;
 import com.sentinel.risk.dto.RiskSimulateResponseDto;
 import jakarta.validation.Valid;
@@ -19,9 +21,11 @@ import java.util.List;
 public class RiskController {
 
     private final RiskService riskService;
+    private final PredictionService predictionService;
 
-    public RiskController(RiskService riskService) {
+    public RiskController(RiskService riskService, PredictionService predictionService) {
         this.riskService = riskService;
+        this.predictionService = predictionService;
     }
 
     /** GET /api/sites/risk-summary — for the Risk Heatmap view */
@@ -42,5 +46,25 @@ public class RiskController {
             @PathVariable String siteId,
             @RequestBody @Valid RiskSimulateRequestDto request) {
         return ResponseEntity.ok(riskService.simulateScore(siteId, request));
+    }
+
+    /**
+     * GET /api/sites/predictions — latest ML model probability per site.
+     * Returns an empty array (not 404) if the model has not been trained yet.
+     */
+    @GetMapping("/predictions")
+    public ResponseEntity<List<PredictionDto>> getPredictions() {
+        return ResponseEntity.ok(predictionService.getLatestPredictions());
+    }
+
+    /**
+     * GET /api/sites/{siteId}/prediction — latest prediction for a single site.
+     * Returns 404 if no prediction exists for this site yet.
+     */
+    @GetMapping("/{siteId}/prediction")
+    public ResponseEntity<PredictionDto> getSitePrediction(@PathVariable String siteId) {
+        return predictionService.getLatestForSite(siteId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

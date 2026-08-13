@@ -55,10 +55,11 @@ export function ComplianceTrendChart({ trend }: ComplianceTrendChartProps) {
               tickFormatter={(v) => `${v}%`}
             />
             <Tooltip
-              formatter={(value: number | null, name: string) => [
-                value != null ? `${value.toFixed(1)}%` : "—",
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={((value: any, name: string) => [
+                value != null ? `${(value as number).toFixed(1)}%` : "—",
                 name,
-              ]}
+              ]) as any}
               contentStyle={{ fontSize: 12 }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />

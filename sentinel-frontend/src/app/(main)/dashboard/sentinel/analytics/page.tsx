@@ -6,11 +6,21 @@ import { BackendError } from "@/components/backend-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchRiskSummary } from "@/lib/sentinel/api";
+import {
+  fetchCorrelation,
+  fetchFeatureImportance,
+  fetchPressureCharts,
+  fetchRiskSummary,
+  fetchSurvivalCurves,
+} from "@/lib/sentinel/api";
 import type { SeverityBand, SiteRiskSummary } from "@/lib/sentinel/types";
 import { cn } from "@/lib/utils";
 
 import { RiskHeatmap } from "../_components/risk-heatmap";
+import { CorrelationScatterChart } from "./_components/correlation-scatter-chart";
+import { FeatureImportanceBar } from "./_components/feature-importance-bar";
+import { PressureControlChart } from "./_components/pressure-control-chart";
+import { SurvivalCurveChart } from "./_components/survival-curve-chart";
 
 const severityBadgeStyles: Record<SeverityBand, string> = {
   Critical: "bg-red-500/10 text-red-700 dark:bg-red-500/15 dark:text-red-400 ring-red-300 dark:ring-red-500/30",
@@ -57,6 +67,20 @@ export default async function AnalyticsPage() {
       </div>
     );
   }
+
+  // Fetch analytics data in parallel — each is gracefully optional
+  const [survivalResult, controlResult, correlationResult, featureResult] =
+    await Promise.allSettled([
+      fetchSurvivalCurves(),
+      fetchPressureCharts(),
+      fetchCorrelation(),
+      fetchFeatureImportance(),
+    ]);
+
+  const survival    = survivalResult.status    === "fulfilled" ? survivalResult.value    : null;
+  const control     = controlResult.status     === "fulfilled" ? controlResult.value     : null;
+  const correlation = correlationResult.status === "fulfilled" ? correlationResult.value : null;
+  const features    = featureResult.status     === "fulfilled" ? featureResult.value     : null;
 
   const sorted = [...sites].sort((a, b) => b.riskScore - a.riskScore);
 
@@ -136,8 +160,7 @@ export default async function AnalyticsPage() {
       {/* Full heatmap — fullView hides the "View All" button */}
       <RiskHeatmap sites={sites} fullView />
 
-      {/* Detailed stats table */}
-      <Card>
+      {/* Detailed stats table */}      <Card>
         <CardHeader>
           <CardTitle>Site Risk Details</CardTitle>
           <CardDescription>
@@ -266,6 +289,25 @@ export default async function AnalyticsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Statistical Diagnostics section ─────────────────────────────── */}
+      {(survival || control || correlation || features) && (
+        <>
+          <div className="space-y-1 mt-2">
+            <h2 className="text-xl font-semibold tracking-tight">Statistical Diagnostics</h2>
+            <p className="text-muted-foreground text-sm">
+              Three independent diagnostics computed from the pipeline data. Each produces one
+              quotable number for operational decision-making.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {survival && <SurvivalCurveChart data={survival} />}
+            {correlation && <CorrelationScatterChart data={correlation} />}
+            {control && <PressureControlChart data={control} />}
+            {features && <FeatureImportanceBar data={features} />}
+          </div>
+        </>
+      )}
     </div>
   );
 }

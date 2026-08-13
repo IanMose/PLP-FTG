@@ -1,5 +1,6 @@
 import {
   Bell,
+  BarChart2,
   type LucideIcon,
   Map,
   ShieldAlert,
@@ -54,8 +55,20 @@ export const sidebarItems: NavGroup[] = [
       {
         id: "sentinel",
         title: "Sentinel",
-        url: "/dashboard/sentinel",
         icon: ShieldAlert,
+        subItems: [
+          {
+            id: "sentinel-overview",
+            title: "Overview",
+            url: "/dashboard/sentinel",
+          },
+          {
+            id: "sentinel-analytics",
+            title: "Analytics",
+            url: "/dashboard/sentinel/analytics",
+            icon: BarChart2,
+          },
+        ],
       },
       {
         id: "compliance",
