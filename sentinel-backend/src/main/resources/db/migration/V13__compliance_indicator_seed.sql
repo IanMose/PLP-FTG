@@ -1,4 +1,4 @@
--- V4: Compliance domain + indicator configuration seed data
+-- V13: Compliance domain + indicator configuration seed data
 -- Seeds all 16 KPI indicator configurations from the Compliance Design document.
 -- Weights, thresholds, and descriptions are data — not code.
 

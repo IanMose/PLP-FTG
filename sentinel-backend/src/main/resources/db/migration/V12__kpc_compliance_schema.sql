@@ -1,4 +1,4 @@
--- V3: KPC Kenya stations + Compliance Intelligence Module schema
+-- V12: KPC Kenya stations + Compliance Intelligence Module schema
 -- Replaces Australian placeholder sites with KPC pipeline network stations.
 -- Adds compliance configuration tables (domain/indicator config, weights, thresholds)
 -- and compliance score + violation tables.
