@@ -1,0 +1,1 @@
+web: mvn clean package -DskipTests && java -Dspring.profiles.active=railway -jar target/sentinel-backend-1.0.0-SNAPSHOT.jar

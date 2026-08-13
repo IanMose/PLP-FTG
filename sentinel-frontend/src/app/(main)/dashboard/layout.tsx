@@ -8,17 +8,21 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
 
+import { cachedFetchAlerts } from "@/lib/sentinel/cached-fetches";
+
 import { LayoutControls } from "./_components/sidebar/layout-controls";
 import { NotificationBell } from "./_components/sidebar/notification-bell";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
 import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
+import { DashboardAutoRefresh } from "./_components/dashboard-auto-refresh";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
-  const [variant, collapsible] = await Promise.all([
+  const [variant, collapsible, alerts] = await Promise.all([
     getPreference("sidebar_variant"),
     getPreference("sidebar_collapsible"),
+    cachedFetchAlerts(),
   ]);
 
   return (
@@ -60,12 +64,13 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
             <div className="flex items-center gap-2">
               <LayoutControls />
               <ThemeSwitcher />
-              <NotificationBell />
+              <NotificationBell alerts={alerts} />
             </div>
           </div>
         </header>
         {/* Pages can set data-content-padding="false" to render full-bleed app layouts. */}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden p-4 has-data-[content-padding=false]:p-0 md:p-6 md:has-data-[content-padding=false]:p-0">
+          <DashboardAutoRefresh />
           {children}
         </div>
       </SidebarInset>

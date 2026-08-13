@@ -10,11 +10,7 @@ interface ConfidenceGaugeProps {
   summary: DataQualitySummary;
 }
 
-/**
- * Semicircular gauge meter showing the Data Confidence Rate
- * (trusted + corrected / total). Renders segmented arcs with
- * green for passing and red for the failing portion.
- */
+// Semicircular gauge showing data confidence as a percentage of trusted + corrected records.
 function GaugeSvg({ value }: { value: number }) {
   const totalSegments = 30;
   const filledSegments = Math.round((value / 100) * totalSegments);
@@ -40,25 +36,28 @@ function GaugeSvg({ value }: { value: number }) {
 
     const path = `M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`;
 
-    let color: string;
+    // Use CSS classes for theming instead of hardcoded RGBA
+    let className: string;
     if (isFilled) {
-      // Gradient from dark to light as we go from left to right
-      const opacity = 0.4 + (i / filledSegments) * 0.6;
-      color = `rgba(255, 255, 255, ${opacity})`;
+      className = "stroke-green-600 dark:stroke-white";
     } else if (isRed) {
-      color = "rgba(239, 68, 68, 0.8)";
+      className = "stroke-red-500";
     } else {
-      color = "rgba(255, 255, 255, 0.1)";
+      className = "stroke-muted-foreground/20";
     }
+
+    // Opacity still varies for filled segments for the gradient effect
+    const opacity = isFilled ? 0.4 + (i / filledSegments) * 0.6 : isRed ? 0.8 : 1;
 
     return (
       <path
         key={i}
         d={path}
         fill="none"
-        stroke={color}
+        className={className}
         strokeWidth={strokeWidth}
         strokeLinecap="round"
+        style={{ opacity }}
       />
     );
   });

@@ -1,13 +1,11 @@
 import {
   Bell,
-  ChartBar,
-  Gauge,
-  LayoutDashboard,
   type LucideIcon,
-  MapPin,
+  Map,
   ShieldAlert,
   ShieldCheck,
   ShoppingBag,
+  Users,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -80,32 +78,26 @@ export const sidebarItems: NavGroup[] = [
       {
         id: "sites",
         title: "Sites",
-        url: "/dashboard/logistics",
-        icon: MapPin,
+        url: "/dashboard/sites",
+        icon: Map,
+      },
+    ],
+  },
+  {
+    id: 2,
+    label: "Accounts",
+    items: [
+      {
+        id: "users",
+        title: "Users",
+        url: "/dashboard/users",
+        icon: Users,
       },
       {
-        id: "default",
-        title: "Default",
-        url: "/dashboard/default",
-        icon: LayoutDashboard,
-      },
-      {
-        id: "crm",
-        title: "CRM",
-        url: "/dashboard/crm",
-        icon: ChartBar,
-      },
-      {
-        id: "analytics",
-        title: "Analytics",
-        url: "/dashboard/analytics",
-        icon: Gauge,
-      },
-      {
-        id: "ecommerce",
-        title: "E-commerce",
-        url: "/dashboard/ecommerce",
-        icon: ShoppingBag,
+        id: "roles",
+        title: "Roles & Permissions",
+        url: "/dashboard/roles",
+        icon: ShieldCheck,
       },
     ],
   },

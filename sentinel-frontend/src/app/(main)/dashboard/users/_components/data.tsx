@@ -280,8 +280,12 @@ export const users: UserRow[] = [
 export const filters = {
   role: [
     "All",
-    "Workspace Owner",
     "Admin",
+    "HSE Manager",
+    "Auditor",
+    "Analyst",
+    "Viewer",
+    "Workspace Owner",
     "Billing Admin",
     "Security Admin",
     "Team Lead",
@@ -291,7 +295,7 @@ export const filters = {
   ],
   team: ["All", ...teamValues],
   status: ["All", "Active", "Pending invite", "Deactivated", "Locked", "Suspended"],
-  workspace: ["All", "Weblabs Studio", "Sandbox", "Internal Tools", "Acme Inc."],
+  workspace: ["All", "Sentinel", "Weblabs Studio", "Sandbox", "Internal Tools", "Acme Inc."],
 };
 
 export const statusMeta: Record<UserStatus, { badgeClass: string; dotClass: string }> = {

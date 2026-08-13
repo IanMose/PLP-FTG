@@ -21,6 +21,12 @@ public class IncidentEntity {
     @Column(name = "site_id", nullable = false)
     private String siteId;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @Column(name = "incident_date", nullable = false)
     private LocalDateTime incidentDate;
 

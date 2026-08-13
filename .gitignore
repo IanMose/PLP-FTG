@@ -37,4 +37,10 @@ Thumbs.db
 *.log
 
 # md files #
+Sentinel_Stage2_Build_Plan.pdf
 Sentinel_Repo_Setup_Guide.md
+sentinel-frontend/CLEANUP_AUDIT.md
+docs/current-stage-validation-report.md
+docs/stage2-alert-gaps-backlog.md
+sentinel-system-summary.md 
+hackathon_reflection.md.worktrees/

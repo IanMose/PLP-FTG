@@ -1,0 +1,71 @@
+# render.yaml — Render Infrastructure-as-Code blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Provisions:
+#   1. sentinel-db       — Managed PostgreSQL 15 database
+#   2. sentinel-backend  — Spring Boot web service (Docker build)
+#
+# One-time setup after first deploy:
+#   • Set JWT_SECRET to a strong random value in the Render dashboard
+#     (Environment → sentinel-backend → Environment Variables).
+
+databases:
+  - name: sentinel-db
+    databaseName: sentinel
+    user: sentinel
+    plan: free          # upgrade to starter ($7/mo) for persistent storage
+    region: oregon      # change to match your users if needed
+
+services:
+  - type: web
+    name: sentinel-backend
+    region: oregon
+    plan: free          # upgrade to starter for always-on + more RAM
+    runtime: docker
+    dockerfilePath: sentinel-backend/Dockerfile
+    dockerContext: sentinel-backend
+
+    # Render injects PORT automatically; Spring Boot reads it via ${PORT:8080}
+    healthCheckPath: /actuator/health
+
+    envVars:
+      # ── Spring profile ───────────────────────────────────────────────────
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
+
+      # ── Database — wired from the sibling DB service above ───────────────
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sentinel-db
+          property: jdbcConnectionString   # jdbc:postgresql://...
+
+      - key: DB_USERNAME
+        fromDatabase:
+          name: sentinel-db
+          property: user
+
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: sentinel-db
+          property: password
+
+      # ── Security ─────────────────────────────────────────────────────────
+      # IMPORTANT: replace this placeholder with a real secret before deploying.
+      # Generate one with: openssl rand -base64 48
+      - key: JWT_SECRET
+        value: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+
+      # ── CORS — add your Render frontend URL once it is deployed ──────────
+      # Example: https://sentinel-frontend.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:3000
+
+      # ── ETL — disabled in production (no Python runtime on this service) ─
+      - key: ETL_ENABLED
+        value: "false"
+
+      # ── ETL Push API Key — must match ETL_API_KEY GitHub Actions secret ──
+      # Generate with: openssl rand -base64 32
+      # Set the same value in GitHub → Settings → Secrets → Actions → ETL_API_KEY
+      - key: ETL_API_KEY
+        value: REPLACE_WITH_STRONG_RANDOM_KEY

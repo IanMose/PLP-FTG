@@ -45,7 +45,7 @@ export function AlertTimeline({ alerts }: AlertTimelineProps) {
       </CardHeader>
       <CardContent>
         <div className="relative space-y-4 before:absolute before:top-2 before:bottom-2 before:left-[15px] before:w-px before:bg-border">
-          {sortedAlerts.slice(0, 7).map((alert) => {
+          {sortedAlerts.slice(0, 8).map((alert) => {
             const Icon = severityIcons[alert.severity];
             return (
               <div key={alert.id} className="relative flex gap-3 pl-9">

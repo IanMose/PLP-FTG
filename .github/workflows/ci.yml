@@ -1,0 +1,73 @@
+name: CI
+
+# Runs on every push and pull request to main.
+# Covers the Python ETL pipeline and the Spring Boot backend.
+
+on:
+  push:
+    branches: [main, feature/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── Python ETL ─────────────────────────────────────────────────────────────
+  etl:
+    name: ETL Pipeline Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sentinel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: sentinel/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/ -v
+
+      - name: Generate synthetic data
+        run: python3 src/generate_data.py
+
+      - name: Run full ETL pipeline
+        run: |
+          python -m src.ingest
+          python -m src.transform
+          python -m src.decide
+          python -m src.load
+
+      - name: Enforce data-quality gate (≥ 90 % acceptance)
+        run: python -m src.validate --fail-below 0.90
+
+  # ── Spring Boot Backend ────────────────────────────────────────────────────
+  backend:
+    name: Backend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sentinel-backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: "maven"
+
+      - name: Build and test (H2 in-memory DB)
+        run: ./mvnw verify -q
+
+      - name: Confirm fat JAR was produced
+        run: ls target/*.jar

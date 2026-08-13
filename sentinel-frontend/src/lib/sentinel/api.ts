@@ -1,10 +1,16 @@
 /**
  * Typed fetch wrappers for the Sentinel Spring Boot backend API.
  *
- * When NEXT_PUBLIC_SENTINEL_API_URL is set, fetches from the real backend.
- * If the backend is unreachable or slow, gracefully falls back to mock data.
+ * All authenticated endpoints read the JWT from the "sentinel-token" cookie
+ * (written by LoginForm on the client side) so Next.js Server Components can
+ * pass the Bearer header without touching localStorage.
+ *
+ * No mock fallbacks — if the backend is unreachable, these functions throw.
+ * Callers (dashboard page Server Components) catch the error and render
+ * <BackendError> instead of empty or fake content.
  */
 
+import { getAuthToken } from "@/server/server-actions";
 import type {
   Alert,
   ComplianceNetworkSummary,
@@ -15,111 +21,229 @@ import type {
   IngestBatch,
   SiteDetail,
   SiteRiskSummary,
+  TelemetrySummary,
+  WhatIfRequest,
+  WhatIfResponse,
 } from "./types";
+import type { AuthResponse, CreateUserRequest, SentinelUser, SentinelRole } from "./auth-types";
 
 const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
 
-const fetchOpts: RequestInit = {
-  cache: "no-store",
-  signal: AbortSignal.timeout(10000), // 10s timeout — covers JVM cold start
-};
+/** Throws a clear error if the env var is missing — called inside each fetch function. */
+function requireApiBase(): string {
+  if (!API_BASE) {
+    throw new Error(
+      "NEXT_PUBLIC_SENTINEL_API_URL is not set. " +
+      "Add it to .env.local, e.g. NEXT_PUBLIC_SENTINEL_API_URL=http://localhost:8080",
+    );
+  }
+  return API_BASE;
+}
 
-// ─── Risk ───────────────────────────────────────────────────────────────────
+const TIMEOUT_MS = 15_000;
+
+/**
+ * Returns an AbortSignal that fires after TIMEOUT_MS.
+ *
+ * AbortSignal.timeout() is avoided here because it throws a DOMException
+ * (TimeoutError) whose .message property is a read-only getter. Turbopack's
+ * error boundary tries to write to .message and crashes with:
+ *   "TypeError: Cannot set property message of which has only a getter"
+ *
+ * Using AbortController + setTimeout throws a plain Error instead, which
+ * the error boundary handles cleanly.
+ */
+function makeTimeoutSignal(): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new Error(`Request timed out after ${TIMEOUT_MS}ms`)), TIMEOUT_MS);
+  return controller.signal;
+}
+
+/** Fetch options that include the JWT Authorization header. */
+async function authedOpts(): Promise<RequestInit> {
+  const token = await getAuthToken();
+  return {
+    cache: "no-store",
+    signal: makeTimeoutSignal(),
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  };
+}
+
+/** Parse a JSON error body from the backend's GlobalExceptionHandler format. */
+async function parseErrorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    return body.message ?? body.error ?? `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
+// ─── Risk ────────────────────────────────────────────────────────────────────
 
 /** GET /api/sites/risk-summary */
 export async function fetchRiskSummary(): Promise<SiteRiskSummary[]> {
-  if (!API_BASE) {
-    const { mockSites } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockSites;
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/sites/risk-summary`, fetchOpts);
-    if (!res.ok) throw new Error(`Risk summary fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] risk-summary unreachable, using mock data");
-    const { mockSites } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockSites;
-  }
+  const res = await fetch(`${requireApiBase()}/api/sites/risk-summary`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** GET /api/sites/{siteId} */
 export async function fetchSiteDetail(siteId: string): Promise<SiteDetail> {
-  if (!API_BASE) {
-    const { getMockSiteDetail } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return getMockSiteDetail(siteId);
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/sites/${siteId}`, fetchOpts);
-    if (!res.ok) throw new Error(`Site detail fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn(`[Sentinel API] site/${siteId} unreachable, using mock data`);
-    const { getMockSiteDetail } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return getMockSiteDetail(siteId);
-  }
+  const res = await fetch(`${requireApiBase()}/api/sites/${siteId}`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
-// ─── Alerts ─────────────────────────────────────────────────────────────────
+/**
+ * POST /api/sites/{siteId}/simulate
+ *
+ * What-if risk simulation — no auth required (/api/sites/** is permitAll()).
+ * IMPORTANT: This is a plain fetch — do NOT use authedOpts() here.
+ * authedOpts() calls getAuthToken() which is a Server Action and will
+ * throw when invoked from a client-side event handler.
+ */
+export async function simulateRisk(
+  siteId: string,
+  overrides: WhatIfRequest,
+): Promise<WhatIfResponse> {
+  const res = await fetch(`${requireApiBase()}/api/sites/${siteId}/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: makeTimeoutSignal(),
+    body: JSON.stringify(overrides),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
 
 /** GET /api/alerts */
 export async function fetchAlerts(): Promise<Alert[]> {
-  if (!API_BASE) {
-    const { mockAlerts } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockAlerts;
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/alerts`, fetchOpts);
-    if (!res.ok) throw new Error(`Alerts fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] alerts unreachable, using mock data");
-    const { mockAlerts } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockAlerts;
-  }
+  const res = await fetch(`${requireApiBase()}/api/alerts`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** POST /api/alerts/{id}/ack */
 export async function acknowledgeAlert(id: string): Promise<void> {
-  if (!API_BASE) return;
-  const res = await fetch(`${API_BASE}/api/alerts/${id}/ack`, { method: "POST" });
-  if (!res.ok) throw new Error(`Alert acknowledge failed: ${res.status}`);
+  const opts = await authedOpts();
+  const res = await fetch(`${requireApiBase()}/api/alerts/${id}/ack`, { ...opts, method: "POST" });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
 }
 
-// ─── Data Quality ───────────────────────────────────────────────────────────
+// ─── Data Quality ─────────────────────────────────────────────────────────────
 
 /** GET /api/quality/summary */
 export async function fetchQualitySummary(): Promise<DataQualitySummary> {
-  if (!API_BASE) {
-    const { mockQualitySummary } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockQualitySummary;
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/quality/summary`, fetchOpts);
-    if (!res.ok) throw new Error(`Quality summary fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] quality/summary unreachable, using mock data");
-    const { mockQualitySummary } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockQualitySummary;
-  }
+  const res = await fetch(`${requireApiBase()}/api/quality/summary`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** GET /api/quality/batches */
 export async function fetchBatches(): Promise<IngestBatch[]> {
-  if (!API_BASE) {
-    const { mockBatches } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockBatches;
+  const res = await fetch(`${requireApiBase()}/api/quality/batches`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── Telemetry ────────────────────────────────────────────────────────────────
+
+/** GET /api/telemetry/summary */
+export async function fetchTelemetrySummary(): Promise<TelemetrySummary> {
+  const res = await fetch(`${requireApiBase()}/api/telemetry/summary`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+/** POST /api/auth/login — public endpoint, no JWT needed */
+export async function loginUser(email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${requireApiBase()}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "Invalid email or password");
   }
-  try {
-    const res = await fetch(`${API_BASE}/api/quality/batches`, fetchOpts);
-    if (!res.ok) throw new Error(`Batches fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] quality/batches unreachable, using mock data");
-    const { mockBatches } = await import("@/app/(main)/dashboard/sentinel/_components/sentinel-data");
-    return mockBatches;
+  return res.json();
+}
+
+// ─── User Management ──────────────────────────────────────────────────────────
+
+/** GET /api/users */
+export async function fetchUsers(token: string): Promise<SentinelUser[]> {
+  const res = await fetch(`${requireApiBase()}/api/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Users fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/** GET /api/users/roles */
+export async function fetchRoles(token: string): Promise<SentinelRole[]> {
+  const res = await fetch(`${requireApiBase()}/api/users/roles`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Roles fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /api/users */
+export async function createUser(request: CreateUserRequest, token: string): Promise<SentinelUser> {
+  const res = await fetch(`${requireApiBase()}/api/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "Failed to create user");
   }
+  return res.json();
+}
+
+/** PATCH /api/users/{id}/status */
+export async function updateUserStatus(id: number, status: string, token: string): Promise<SentinelUser> {
+  const res = await fetch(`${requireApiBase()}/api/users/${id}/status`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`Status update failed: ${res.status}`);
+  return res.json();
+}
+
+/** DELETE /api/users/{id} */
+export async function deleteUser(id: number, token: string): Promise<void> {
+  const res = await fetch(`${requireApiBase()}/api/users/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+}
+
+// ─── ETL Config ───────────────────────────────────────────────────────────────
+
+/** GET /api/config/etl — public, no JWT needed */
+export async function fetchEtlConfig(): Promise<{ frontendRefreshMs: number; pollIntervalMs: number; rowsPerCycle: number }> {
+  const base = requireApiBase();
+  const res = await fetch(`${base}/api/config/etl`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`ETL config fetch failed: ${res.status}`);
+  return res.json();
 }
 
 // ─── Compliance ──────────────────────────────────────────────────────────────

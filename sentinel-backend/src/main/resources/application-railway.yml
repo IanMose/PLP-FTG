@@ -1,0 +1,54 @@
+spring:
+  datasource:
+    # Railway injects DATABASE_URL as postgresql://user:pass@host:port/db
+    # Spring Boot JDBC needs the jdbc: prefix — we prepend it here
+    url: jdbc:${DATABASE_URL}
+    driver-class-name: org.postgresql.Driver
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  h2:
+    console:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+sentinel:
+  cors:
+    # Set CORS_ALLOWED_ORIGINS in Railway env vars to your Vercel URL
+    # e.g. https://sentinel.vercel.app
+    # Multiple origins: comma-separated, no spaces
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  jwt:
+    # Must be set in Railway env vars — never commit the real secret
+    secret: ${JWT_SECRET}
+    expiration-ms: 86400000  # 24 hours
+  etl:
+    # Live ETL disabled for Phase 1 deployment — re-enable in Phase 2
+    enabled: false
+    live-batch-path: ../sentinel/data/warehouse/live_batch.json
+    sentinel-dir: ../sentinel
+    poll-interval-ms: 120000
+    rows-per-cycle: 200
+    frontend-refresh-ms: 125000
