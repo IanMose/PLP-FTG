@@ -209,105 +209,12 @@ def deduplicate(df: pd.DataFrame, natural_key: list[str], sort_col: str = "inges
     return df_sorted.drop_duplicates(subset=natural_key, keep="first").reset_index(drop=True)
 
 
-
-# ─── Compliance feature engineering ───────────────────────────────────────────
-#
-# These mappings are used to tag each record with the KPI indicator(s) it
-# affects. Tags feed the ComplianceService proxy scoring logic in the backend.
-#
-# Format: keyword list → indicator_id (from compliance_indicators table)
-#
-COMPLIANCE_KEYWORD_MAP = [
-    (["ppe", "personal protective", "hard hat", "gloves"],                  "PCI"),
-    (["training", "certification", "certificate", "expired", "competency"], "TCI"),
-    (["permit", "ptw", "hot work", "confined space", "without valid"],       "PTWCI"),
-    (["water", "nema", "discharge", "effluent", "tph"],                      "WQCI"),
-    (["air quality", "emission", "voc", "nox", "so2"],                       "AQCI"),
-    (["waste", "manifest", "disposal", "hazardous waste"],                   "WMCI"),
-    (["spill", "containment", "release", "berth"],                           "SRCI"),
-    (["maintenance overdue", "pm overdue", "preventive", "scheduled maint"], "PMCI"),
-    (["corrosion", "monitoring point", "cathodic", "thickness"],             "CMCI"),
-    (["leak detection", "scada", "cpm", "system offline"],                   "LDCI"),
-    (["regulatory", "epra", "nema report", "late report", "submitted late"], "RRI"),
-    (["sop", "procedure", "deviation", "sop-"],                              "SOPCI"),
-    (["inspection overdue", "overdue inspection", "pressure vessel"],        "ICI"),
-    (["corrective action", "car overdue", "finding"],                        "CACI"),
-]
-
-# Severity → compliance impact weight (used for compliance_impact_score)
-SEVERITY_IMPACT = {
-    "Critical": 1.0,
-    "High":     0.7,
-    "Medium":   0.4,
-    "Low":      0.1,
-}
-
-
-def tag_compliance_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add a 'compliance_indicators' column tagging each record with the
-    KPI indicator IDs it affects (pipe-separated, e.g. 'PCI|PTWCI').
-    Also adds 'compliance_impact_score' — a 0-1 weight based on severity.
-    """
-    if "description" not in df.columns:
-        return df
-
-    def _tag(row) -> str:
-        text = str(row.get("description", "")).lower()
-        findings = str(row.get("findings", "")).lower()
-        combined = text + " " + findings
-        matched = []
-        for keywords, indicator_id in COMPLIANCE_KEYWORD_MAP:
-            if any(kw in combined for kw in keywords):
-                matched.append(indicator_id)
-        return "|".join(matched) if matched else ""
-
-    def _impact(row) -> float:
-        severity = str(row.get("severity", "")).strip()
-        return SEVERITY_IMPACT.get(severity, 0.1)
-
-    df = df.copy()
-    df["compliance_indicators"] = df.apply(_tag, axis=1)
-    df["compliance_impact_score"] = df.apply(_impact, axis=1)
-    return df
-
-
-def compute_reporting_timeliness(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    For incident records: compute hours_to_report from incident_date to
-    ingestion_timestamp. Adds 'reported_on_time' boolean column used by
-    IRCI (Incident Reporting Compliance) scoring.
-
-    On-time rules (from design doc):
-      - LTI / Dangerous Occurrence: ≤ 4 hours
-      - Near-miss / First Aid / others: ≤ 24 hours
-    """
-    if "incident_date" not in df.columns or "ingestion_timestamp" not in df.columns:
-        return df
-
-    df = df.copy()
-    incident_dt = pd.to_datetime(df["incident_date"], errors="coerce", utc=True)
-    ingest_dt   = pd.to_datetime(df["ingestion_timestamp"], errors="coerce", utc=True)
-
-    hours_delta = (ingest_dt - incident_dt).dt.total_seconds() / 3600
-    df["hours_to_report"] = hours_delta.round(2)
-
-    severity = df.get("severity", pd.Series([""] * len(df), index=df.index))
-    lti_mask = severity.isin(["Critical", "High"])
-
-    threshold = lti_mask.map(lambda is_lti: 4.0 if is_lti else 24.0)
-    df["reported_on_time"] = (hours_delta >= 0) & (hours_delta <= threshold)
-
-    return df
-
-
 def transform(df: pd.DataFrame) -> pd.DataFrame:
     """
     Apply all transformations:
     1. Normalize categorical text (severity, status, incident_type, site)
     2. Convert date columns to ISO 8601 UTC
     3. Deduplicate on natural key
-    4. Compliance feature engineering (indicator tagging + reporting timeliness)
     """
     df = df.copy()
 
@@ -369,11 +276,6 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
 
         if frames:
             df = pd.concat(frames, ignore_index=True)
-
-    # 4. Compliance feature engineering
-    df = tag_compliance_indicators(df)
-    if "incident_id" in df.columns:
-        df = compute_reporting_timeliness(df)
 
     return df
 
