@@ -1,5 +1,9 @@
 package com.sentinel.common.config;
 
+import com.sentinel.compliance.ComplianceDomainEntity;
+import com.sentinel.compliance.ComplianceDomainRepository;
+import com.sentinel.compliance.ComplianceIndicatorEntity;
+import com.sentinel.compliance.ComplianceIndicatorRepository;
 import com.sentinel.user.AppRoleEntity;
 import com.sentinel.user.AppRoleRepository;
 import com.sentinel.user.AppUserEntity;
@@ -49,6 +53,8 @@ public class DataSeeder implements ApplicationRunner {
     private final AppUserRepository userRepository;
     private final AppRoleRepository roleRepository;
     private final PasswordEncoder   passwordEncoder;
+    private final ComplianceDomainRepository    complianceDomainRepository;
+    private final ComplianceIndicatorRepository complianceIndicatorRepository;
 
     /** Temporary password shared by all seed accounts. Rotate after first login. */
     private static final String DEFAULT_PASSWORD = "sentinel@admin";
@@ -63,6 +69,7 @@ public class DataSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         seedRoles();
         seedUsers();
+        seedComplianceConfig();
     }
 
     /** Ensures all RBAC roles exist. Idempotent — skips roles already present. */
@@ -129,6 +136,65 @@ public class DataSeeder implements ApplicationRunner {
         } else {
             log.info("DataSeeder: created {} account(s). Rotate passwords after first login.", created);
         }
+    }
+
+    /** Ensures compliance domains and indicators are seeded. Idempotent — skips if already present. */
+    private void seedComplianceConfig() {
+        if (complianceDomainRepository.count() > 0) {
+            log.debug("DataSeeder: compliance domains already present — skipping");
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+
+        // ── Domains ─────────────────────────────────────────────────────────
+        record DomainSeed(String id, String name, double weight, String desc, int order) {}
+        List<DomainSeed> domains = List.of(
+            new DomainSeed("SCD",  "Safety Compliance",           0.30, "Procedures, authorisations, training, and equipment.", 1),
+            new DomainSeed("ECD",  "Environmental Compliance",    0.25, "Water, air, waste, and spill response.", 2),
+            new DomainSeed("AICD", "Asset Integrity Compliance",  0.25, "Inspection, maintenance, and monitoring intervals.", 3),
+            new DomainSeed("RCD",  "Regulatory Compliance",       0.20, "External regulators and internal governance.", 4)
+        );
+        for (DomainSeed d : domains) {
+            ComplianceDomainEntity e = new ComplianceDomainEntity();
+            e.setDomainId(d.id()); e.setDomainName(d.name()); e.setDomainWeight(d.weight());
+            e.setDescription(d.desc()); e.setDisplayOrder(d.order());
+            e.setIsActive(true); e.setVersion(1); e.setCreatedAt(now); e.setUpdatedAt(now);
+            complianceDomainRepository.save(e);
+        }
+
+        // ── Indicators ───────────────────────────────────────────────────────
+        record IndSeed(String id, String name, String domain, double wt, double green, double amber, String type) {}
+        List<IndSeed> indicators = List.of(
+            // Safety
+            new IndSeed("PCI",   "PPE Compliance Rate",                    "SCD",  0.25, 95, 80, "LEADING"),
+            new IndSeed("TCI",   "Training Compliance Rate",               "SCD",  0.30, 90, 75, "LEADING"),
+            new IndSeed("PTWCI", "Permit-to-Work Compliance Rate",         "SCD",  0.30, 98, 90, "LEADING"),
+            new IndSeed("IRCI",  "Incident Reporting Timeliness Rate",     "SCD",  0.15, 95, 80, "LAGGING"),
+            // Environmental
+            new IndSeed("WQCI",  "Water Quality Discharge Compliance Rate","ECD",  0.25, 95, 80, "MIXED"),
+            new IndSeed("AQCI",  "Air Emissions Compliance Rate",          "ECD",  0.20, 95, 80, "MIXED"),
+            new IndSeed("WMCI",  "Waste Management Compliance Rate",       "ECD",  0.30, 90, 75, "LEADING"),
+            new IndSeed("SRCI",  "Spill Response Compliance Rate",         "ECD",  0.25, 95, 80, "LAGGING"),
+            // Asset Integrity
+            new IndSeed("ICI",   "Asset Inspection Compliance Rate",       "AICD", 0.30, 95, 80, "LEADING"),
+            new IndSeed("PMCI",  "Preventive Maintenance Completion Rate", "AICD", 0.30, 90, 75, "LEADING"),
+            new IndSeed("CMCI",  "Corrosion Monitoring Coverage Rate",     "AICD", 0.20, 90, 75, "LEADING"),
+            new IndSeed("LDCI",  "Leak Detection System Availability",     "AICD", 0.20, 99, 95, "LEADING"),
+            // Regulatory
+            new IndSeed("ACI",   "HSE Audit Completion Rate",              "RCD",  0.25, 95, 80, "LAGGING"),
+            new IndSeed("CACI",  "Corrective Action Closure Rate",         "RCD",  0.30, 90, 75, "LAGGING"),
+            new IndSeed("RRI",   "Regulatory Report Submission Rate",      "RCD",  0.25,100, 90, "LAGGING"),
+            new IndSeed("SOPCI","Internal SOP Adherence Rate",             "RCD",  0.20, 90, 75, "MIXED")
+        );
+        for (IndSeed i : indicators) {
+            ComplianceIndicatorEntity e = new ComplianceIndicatorEntity();
+            e.setIndicatorId(i.id()); e.setIndicatorName(i.name()); e.setDomainId(i.domain());
+            e.setIndicatorWeight(i.wt()); e.setGreenThreshold(i.green()); e.setAmberThreshold(i.amber());
+            e.setIndicatorType(i.type()); e.setIsActive(true); e.setVersion(1);
+            e.setCreatedAt(now); e.setUpdatedAt(now);
+            complianceIndicatorRepository.save(e);
+        }
+        log.info("DataSeeder: seeded 4 compliance domains and 16 indicators");
     }
 
     /** Lightweight record to hold seed account data. */

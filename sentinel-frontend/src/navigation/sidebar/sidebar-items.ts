@@ -77,12 +77,6 @@ export const sidebarItems: NavGroup[] = [
         icon: ShieldCheck,
       },
       {
-        id: "compliance",
-        title: "Compliance",
-        url: "/dashboard/compliance",
-        icon: ShieldCheck,
-      },
-      {
         id: "alerts",
         title: "Alerts",
         url: "/dashboard/alerts",

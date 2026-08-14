@@ -47,9 +47,6 @@ function requireApiBase(): string {
 
 const TIMEOUT_MS = 15_000;
 
-/** Simple fetch options for public/mock-fallback compliance endpoints. */
-const fetchOpts: RequestInit = { cache: "no-store" };
-
 /**
  * Returns an AbortSignal that fires after TIMEOUT_MS.
  *
@@ -258,96 +255,40 @@ export async function fetchEtlConfig(): Promise<{ frontendRefreshMs: number; pol
 
 /** GET /api/compliance/network */
 export async function fetchComplianceNetwork(): Promise<ComplianceNetworkSummary> {
-  if (!API_BASE) {
-    const { mockComplianceNetwork } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return mockComplianceNetwork;
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/compliance/network`, fetchOpts);
-    if (!res.ok) throw new Error(`Compliance network fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] compliance/network unreachable, using mock data");
-    const { mockComplianceNetwork } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return mockComplianceNetwork;
-  }
+  const res = await fetch(`${requireApiBase()}/api/compliance/network`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** GET /api/compliance/sites/{siteId} */
 export async function fetchComplianceSite(siteId: string): Promise<ComplianceSummary> {
-  if (!API_BASE) {
-    const { getMockComplianceSite } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return getMockComplianceSite(siteId);
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/compliance/sites/${siteId}`, fetchOpts);
-    if (!res.ok) throw new Error(`Compliance site fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn(`[Sentinel API] compliance/sites/${siteId} unreachable, using mock data`);
-    const { getMockComplianceSite } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return getMockComplianceSite(siteId);
-  }
+  const res = await fetch(`${requireApiBase()}/api/compliance/sites/${siteId}`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** GET /api/compliance/violations?siteId= */
 export async function fetchComplianceViolations(
   siteId?: string,
 ): Promise<ComplianceViolation[]> {
-  if (!API_BASE) {
-    const { mockViolations } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return siteId ? mockViolations.filter((v) => v.siteId === siteId) : mockViolations;
-  }
   const url = siteId
-    ? `${API_BASE}/api/compliance/violations?siteId=${siteId}`
-    : `${API_BASE}/api/compliance/violations`;
-  try {
-    const res = await fetch(url, fetchOpts);
-    if (!res.ok) throw new Error(`Compliance violations fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] compliance/violations unreachable, using mock data");
-    const { mockViolations } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return siteId ? mockViolations.filter((v) => v.siteId === siteId) : mockViolations;
-  }
+    ? `${requireApiBase()}/api/compliance/violations?siteId=${siteId}`
+    : `${requireApiBase()}/api/compliance/violations`;
+  const res = await fetch(url, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 /** GET /api/compliance/trend?siteId= */
 export async function fetchComplianceTrend(
   siteId?: string,
 ): Promise<ComplianceTrendPoint[]> {
-  if (!API_BASE) {
-    const { mockComplianceTrend } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return mockComplianceTrend;
-  }
   const url = siteId
-    ? `${API_BASE}/api/compliance/trend?siteId=${siteId}`
-    : `${API_BASE}/api/compliance/trend`;
-  try {
-    const res = await fetch(url, fetchOpts);
-    if (!res.ok) throw new Error(`Compliance trend fetch failed: ${res.status}`);
-    return res.json();
-  } catch {
-    console.warn("[Sentinel API] compliance/trend unreachable, using mock data");
-    const { mockComplianceTrend } = await import(
-      "@/app/(main)/dashboard/sentinel/_components/sentinel-data"
-    );
-    return mockComplianceTrend;
-  }
+    ? `${requireApiBase()}/api/compliance/trend?siteId=${siteId}`
+    : `${requireApiBase()}/api/compliance/trend`;
+  const res = await fetch(url, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
 }
 
 // ─── Analytics (Stage C / D diagnostics) ─────────────────────────────────────
