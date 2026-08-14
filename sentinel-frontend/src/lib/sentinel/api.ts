@@ -13,10 +13,6 @@
 import { getAuthToken } from "@/server/server-actions";
 import type {
   Alert,
-  ComplianceNetworkSummary,
-  ComplianceSummary,
-  ComplianceTrendPoint,
-  ComplianceViolation,
   ControlChartData,
   CorrelationData,
   DataQualitySummary,
@@ -248,46 +244,6 @@ export async function fetchEtlConfig(): Promise<{ frontendRefreshMs: number; pol
   const base = requireApiBase();
   const res = await fetch(`${base}/api/config/etl`, { cache: "no-store" });
   if (!res.ok) throw new Error(`ETL config fetch failed: ${res.status}`);
-  return res.json();
-}
-
-// ─── Compliance ──────────────────────────────────────────────────────────────
-
-/** GET /api/compliance/network */
-export async function fetchComplianceNetwork(): Promise<ComplianceNetworkSummary> {
-  const res = await fetch(`${requireApiBase()}/api/compliance/network`, await authedOpts());
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
-  return res.json();
-}
-
-/** GET /api/compliance/sites/{siteId} */
-export async function fetchComplianceSite(siteId: string): Promise<ComplianceSummary> {
-  const res = await fetch(`${requireApiBase()}/api/compliance/sites/${siteId}`, await authedOpts());
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
-  return res.json();
-}
-
-/** GET /api/compliance/violations?siteId= */
-export async function fetchComplianceViolations(
-  siteId?: string,
-): Promise<ComplianceViolation[]> {
-  const url = siteId
-    ? `${requireApiBase()}/api/compliance/violations?siteId=${siteId}`
-    : `${requireApiBase()}/api/compliance/violations`;
-  const res = await fetch(url, await authedOpts());
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
-  return res.json();
-}
-
-/** GET /api/compliance/trend?siteId= */
-export async function fetchComplianceTrend(
-  siteId?: string,
-): Promise<ComplianceTrendPoint[]> {
-  const url = siteId
-    ? `${requireApiBase()}/api/compliance/trend?siteId=${siteId}`
-    : `${requireApiBase()}/api/compliance/trend`;
-  const res = await fetch(url, await authedOpts());
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
 
