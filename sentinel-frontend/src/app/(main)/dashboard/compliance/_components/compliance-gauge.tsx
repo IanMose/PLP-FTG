@@ -50,7 +50,8 @@ function ComplianceGaugeSvg({ value, rag, size }: { value: number; rag: RagStatu
 
     let color: string;
     if (isFilled) {
-      const opacity = 0.4 + (i / Math.max(filledSegments, 1)) * 0.6;
+      // Round to 2 decimal places — prevents SSR/client floating-point mismatch
+      const opacity = Math.round((0.4 + (i / Math.max(filledSegments, 1)) * 0.6) * 100) / 100;
       color = `${fill}${opacity})`;
     } else {
       color = "rgba(120,120,120,0.15)";
