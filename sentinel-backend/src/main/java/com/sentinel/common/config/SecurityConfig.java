@@ -80,8 +80,7 @@ public class SecurityConfig {
                     "/api/telemetry/**",
                     "/api/ingestion/**",
                     "/api/config/**",
-                    "/api/analytics/**",
-                    "/api/compliance/**"
+                    "/api/analytics/**"
                 ).permitAll()
                 // User management requires Admin role
                 .requestMatchers("/api/users/**").hasAnyRole("ADMIN")
