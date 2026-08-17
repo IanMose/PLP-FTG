@@ -71,7 +71,7 @@ public class SecurityConfig {
                     "/api/etl/push"        // ETL push — authenticated via X-ETL-Api-Key header
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
-                // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion)
+                // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)
                 .requestMatchers(
                     "/api/alerts",
                     "/api/sites/**",
@@ -79,7 +79,8 @@ public class SecurityConfig {
                     "/api/quality/**",
                     "/api/telemetry/**",
                     "/api/ingestion/**",
-                    "/api/config/**"
+                    "/api/config/**",
+                    "/api/analytics/**"
                 ).permitAll()
                 // User management requires Admin role
                 .requestMatchers("/api/users/**").hasAnyRole("ADMIN")

@@ -289,6 +289,25 @@ print(f"    fact_audits    : {len(audits_df)}")
 print(f"    fact_telemetry : {len(telemetry_df)}")
 PYEOF
 
+# ── Feature Engineering ───────────────────────────────────────────────────────
+echo ""
+echo "[FEATURES] Building site feature table (180-day window)..."
+python3 -m src.features --raw-dir data/raw --output-dir data/warehouse
+
+# ── Predictive Model ──────────────────────────────────────────────────────────
+echo ""
+echo "[MODEL] Training predictive model..."
+python3 -m src.predict --train
+
+echo ""
+echo "[MODEL] Scoring current sites..."
+python3 -m src.predict --score
+
+# ── Statistical Diagnostics ───────────────────────────────────────────────────
+echo ""
+echo "[DIAGNOSTICS] Computing statistical diagnostics..."
+python3 -m src.diagnostics --raw-dir data/raw --output-dir data/warehouse
+
 # ── Quality gate ──────────────────────────────────────────────────────────────
 echo ""
 echo "[GATE] Running quality gate (threshold: ${GATE_THRESHOLD})..."
