@@ -18,4 +18,11 @@ public class SiteRiskSummaryDto {
     private int daysSinceLastAudit;
     private double correctedRate;
     private double rejectedRate;
+    /**
+     * ML model: probability of a Critical incident in the next 7 days.
+     * Null if the model has not been trained yet (no fact_predictions rows).
+     */
+    private Double incidentProbability7d;
+    /** Risk band derived from model probability: HIGH / MODERATE / LOW / null */
+    private String modelRiskBand;
 }

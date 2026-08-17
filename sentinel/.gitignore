@@ -2,6 +2,7 @@ data/raw/
 data/warehouse/*.duckdb
 data/warehouse/*.parquet
 data/warehouse/*.json
+models/*.pkl
 __pycache__/
 *.pyc
 .pytest_cache/
