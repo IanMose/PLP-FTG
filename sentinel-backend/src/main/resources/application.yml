@@ -2,11 +2,9 @@ spring:
   application:
     name: sentinel-backend
 
-  # Active profile — postgres local dev
-  profiles:
-    active: postgres
-
-  # H2 fallback (not used when postgres profile is active)
+  # Default profile — H2 in-memory for quick local dev.
+  # To run against local Postgres: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
+  # On Render, SPRING_PROFILES_ACTIVE=render is injected via render.yaml — no hardcoding needed.
   datasource:
     url: jdbc:h2:mem:sentinel;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver
@@ -19,9 +17,6 @@ spring:
     show-sql: false
     open-in-view: false
 
-  # defer-datasource-initialization is needed for H2 only (ensures JPA creates
-  # tables before data-h2.sql runs). Must be false for Flyway profiles to avoid
-  # circular dependency between flyway and entityManagerFactory beans.
   defer-datasource-initialization: true
 
   flyway:
@@ -53,7 +48,7 @@ sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
-    secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+    secret: ${JWT_SECRET:Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor}
     expiration-ms: 86400000  # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
@@ -65,7 +60,8 @@ sentinel:
     frontend-refresh-ms: 125000
 
 ---
-# PostgreSQL profile — local dev
+# PostgreSQL profile — local dev only
+# Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
 spring:
   config:
     activate:
@@ -81,7 +77,6 @@ spring:
     hibernate:
       ddl-auto: none
 
-  # Disable H2 deferred init — causes circular dependency with Flyway
   defer-datasource-initialization: false
 
   flyway:
@@ -100,3 +95,4 @@ spring:
       enabled: false
 
 # Render production config lives in application-render.yml
+# (activated by SPRING_PROFILES_ACTIVE=render set in render.yaml)
