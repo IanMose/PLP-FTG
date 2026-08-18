@@ -169,6 +169,7 @@ public class EtlReloadService {
             // Runs outside the loader transactions — alert failures never affect data load.
             try {
                 alertRulesEngine.evaluate(savedIncidents, buildAttemptedIncidents(batch.getIncidents(), knownSiteIds));
+                alertRulesEngine.refreshStaleNarratives();
             } catch (Exception alertEx) {
                 log.warn("AlertRulesEngine evaluation failed (non-fatal): {}", alertEx.getMessage());
             }

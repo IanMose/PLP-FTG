@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DecisionOutcome, SeverityBand, SiteDetail } from "@/lib/sentinel/types";
 import { cn } from "@/lib/utils";
+import { NarrativeAlertCard } from "./narrative-alert-card";
 
 interface SiteDetailViewProps {
   site: SiteDetail;
@@ -73,6 +74,16 @@ export function SiteDetailView({ site }: SiteDetailViewProps) {
           </Badge>
         </div>
       </div>
+
+      {/* Active alert narrative briefing — surfaces the narrative as the
+          first thing a safety officer reads when opening a site page */}
+      {site.activeAlerts && site.activeAlerts.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {site.activeAlerts.map((alert) => (
+            <NarrativeAlertCard key={alert.id} alert={alert} compact={false} />
+          ))}
+        </div>
+      )}
 
       {/* Incidents Timeline */}
       <Card>

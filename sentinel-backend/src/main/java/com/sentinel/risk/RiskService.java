@@ -5,6 +5,7 @@ import com.sentinel.common.dto.SiteRiskSummaryDto;
 import com.sentinel.common.dto.IncidentDto;
 import com.sentinel.common.dto.AuditDto;
 import com.sentinel.common.dto.TelemetryReadingDto;
+import com.sentinel.alert.AlertService;
 import com.sentinel.site.*;
 import com.sentinel.telemetry.TelemetryService;
 import org.springframework.stereotype.Service;
@@ -50,15 +51,18 @@ public class RiskService {
     private final IncidentRepository incidentRepository;
     private final AuditRepository auditRepository;
     private final TelemetryService telemetryService;
+    private final AlertService alertService;
 
     public RiskService(SiteRepository siteRepository,
                        IncidentRepository incidentRepository,
                        AuditRepository auditRepository,
-                       TelemetryService telemetryService) {
+                       TelemetryService telemetryService,
+                       AlertService alertService) {
         this.siteRepository = siteRepository;
         this.incidentRepository = incidentRepository;
         this.auditRepository = auditRepository;
         this.telemetryService = telemetryService;
+        this.alertService = alertService;
     }
 
     public List<SiteRiskSummaryDto> computeRiskSummary() {
@@ -190,6 +194,11 @@ public class RiskService {
                 .build()
         ).collect(Collectors.toList());
 
+        // Fetch active alerts for this site to surface narrative on the detail page
+        List<com.sentinel.common.dto.AlertDto> activeAlerts = alertService.getAllAlerts().stream()
+                .filter(a -> siteId.equals(a.getSiteId()) && "active".equals(a.getStatus()))
+                .collect(Collectors.toList());
+
         return SiteDetailDto.builder()
                 .siteId(site.getSiteId())
                 .siteName(site.getSiteName())
@@ -202,6 +211,7 @@ public class RiskService {
                 .incidents(incidentDtos)
                 .audits(auditDtos)
                 .telemetryReadings(telemetryReadings)
+                .activeAlerts(activeAlerts)
                 .build();
     }
 

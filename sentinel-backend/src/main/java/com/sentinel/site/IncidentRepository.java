@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -23,4 +24,12 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
     /** Returns the subset of the given IDs that already exist — one query for a whole batch. */
     @Query("SELECT i.incidentId FROM IncidentEntity i WHERE i.incidentId IN :ids")
     Set<String> findExistingIds(@Param("ids") Set<String> ids);
+
+    /**
+     * Count incidents at a site since a given timestamp.
+     * Used by NarrativeService to enrich alert narratives with recent activity context.
+     */
+    @Query("SELECT COUNT(i) FROM IncidentEntity i WHERE i.siteId = :siteId AND i.incidentDate > :since")
+    long countBySiteIdAndIncidentDateAfter(@Param("siteId") String siteId,
+                                           @Param("since") LocalDateTime since);
 }
