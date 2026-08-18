@@ -62,7 +62,7 @@ public class RiskService {
                        IncidentRepository incidentRepository,
                        AuditRepository auditRepository,
                        TelemetryService telemetryService,
-                       AlertService alertService) {
+                       AlertService alertService,
                        PredictionService predictionService) {
         this.siteRepository = siteRepository;
         this.incidentRepository = incidentRepository;

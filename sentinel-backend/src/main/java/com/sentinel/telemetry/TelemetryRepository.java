@@ -34,6 +34,8 @@ public interface TelemetryRepository extends JpaRepository<TelemetryEntity, Stri
            "AND (t.pressurePsi > 800 OR t.pressurePsi < 0)")
     long countPressureSpikesForSiteSince(@Param("siteId") String siteId,
                                          @Param("since") LocalDateTime since);
+
+    /**
      * Counts pressure spikes for a single site directly.
      * Replaces the current approach of loading all sites and filtering in Java.
      */
