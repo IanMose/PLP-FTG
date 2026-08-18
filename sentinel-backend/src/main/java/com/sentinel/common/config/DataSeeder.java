@@ -16,10 +16,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * DataSeeder — runs once at startup after Flyway migrations complete.
+ * DataSeeder — runs once at startup after the JPA schema is created.
  *
- * Seeds the five default Sentinel accounts if they do not already exist.
- * Safe to run on every restart: every insert is guarded by an existsByEmail check.
+ * On the H2 dev profile, Flyway is disabled and JPA uses create-drop.
+ * This seeder is therefore the sole source of reference data at startup.
+ * It seeds in order:
+ *   1. RBAC roles (app_role) — needed before users
+ *   2. Default user accounts (app_user)
+ *
+ * On Postgres / Render, Flyway already seeded both tables via V3 and V4.
+ * Every insert here is guarded by an existsBy* check — safe to run on
+ * every restart regardless of profile.
  *
  * Default accounts:
  * ┌─────────────────────────┬───────────────────┬─────────────┐
@@ -46,9 +53,41 @@ public class DataSeeder implements ApplicationRunner {
     /** Temporary password shared by all seed accounts. Rotate after first login. */
     private static final String DEFAULT_PASSWORD = "sentinel@admin";
 
+    /** RBAC roles seeded in order — used by both Flyway (Postgres) and JPA (H2) profiles. */
+    private static final List<String> ROLE_NAMES = List.of(
+        "Admin", "HSE Manager", "Auditor", "Analyst", "Viewer"
+    );
+
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        seedRoles();
+        seedUsers();
+    }
+
+    /** Ensures all RBAC roles exist. Idempotent — skips roles already present. */
+    private void seedRoles() {
+        int created = 0;
+        for (String roleName : ROLE_NAMES) {
+            if (roleRepository.findByNameIgnoreCase(roleName).isPresent()) {
+                log.debug("DataSeeder: role '{}' already exists — skipping", roleName);
+                continue;
+            }
+            AppRoleEntity role = new AppRoleEntity();
+            role.setName(roleName);
+            role.setDescription(roleName + " role");
+            role.setCreatedAt(java.time.LocalDateTime.now());
+            roleRepository.save(role);
+            log.info("DataSeeder: created role '{}'", roleName);
+            created++;
+        }
+        if (created > 0) {
+            log.info("DataSeeder: seeded {} role(s)", created);
+        }
+    }
+
+    /** Ensures all default user accounts exist. Idempotent — skips accounts already present. */
+    private void seedUsers() {
         log.info("DataSeeder: checking seed accounts...");
 
         List<SeedAccount> accounts = List.of(
@@ -68,7 +107,7 @@ public class DataSeeder implements ApplicationRunner {
 
             AppRoleEntity role = roleRepository.findByNameIgnoreCase(account.role())
                 .orElseThrow(() -> new IllegalStateException(
-                    "DataSeeder: role '%s' not found. Ensure V3 Flyway migration ran first."
+                    "DataSeeder: role '%s' not found — seedRoles() must run first."
                         .formatted(account.role())
                 ));
 

@@ -32,4 +32,23 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
     @Query("SELECT COUNT(i) FROM IncidentEntity i WHERE i.siteId = :siteId AND i.incidentDate > :since")
     long countBySiteIdAndIncidentDateAfter(@Param("siteId") String siteId,
                                            @Param("since") LocalDateTime since);
+    /** Projection interface for aggregate incident scalars per site. */
+    interface SiteIncidentScalars {
+        Long getTotal();    // COUNT — never null, but boxed for consistency
+        Long getCritHigh(); // SUM — returns null when no rows match
+        Long getRejected(); // SUM — returns null when no rows match
+    }
+
+    /**
+     * Returns aggregate incident counts for a single site in one query.
+     * Used by the simulate path — avoids loading the full incident collection.
+     */
+    @Query("""
+        SELECT COUNT(i) AS total,
+               SUM(CASE WHEN i.severity IN ('Critical', 'High') THEN 1 ELSE 0 END) AS critHigh,
+               SUM(CASE WHEN i.decision = 'rejected' THEN 1 ELSE 0 END) AS rejected
+        FROM IncidentEntity i
+        WHERE i.siteId = :siteId
+        """)
+    SiteIncidentScalars getScalarsForSite(@Param("siteId") String siteId);
 }

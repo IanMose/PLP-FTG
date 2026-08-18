@@ -141,11 +141,44 @@ export interface SiteDetail {
   riskScore: number;
   severityBand: SeverityBand;
   pressureSpikeCount: number;
+  // Risk formula inputs — used by breakdown panel and what-if slider
+  incidentCount: number;
+  critHighCount: number;
+  daysSinceAudit: number;
+  rejectedRate: number;
   incidents: Incident[];
   audits: Audit[];
   telemetryReadings: TelemetryReading[];
   /** Active alerts for this site — used to show the narrative briefing at the top of the detail page. */
   activeAlerts?: Alert[];
+}
+
+// What-If Simulation
+
+export interface WhatIfRequest {
+  incidentCountOverride?: number;
+  critHighPercentOverride?: number;  // 0-100 percentage
+  daysSinceAuditOverride?: number;
+  rejectionRateOverride?: number;    // 0.0-1.0 fraction
+  pressureSpikesOverride?: number;
+}
+
+export interface WhatIfResponse {
+  currentScore: number;
+  currentBand: SeverityBand;
+  simulatedScore: number;
+  simulatedBand: SeverityBand;
+  scoreDelta: number;
+  incidentFrequencyContrib: number;  // max 30.0
+  severityMixContrib: number;        // max 30.0
+  auditRecencyContrib: number;       // max 20.0
+  rejectionRateContrib: number;      // max 10.0
+  pressureSpikesContrib: number;     // max 10.0
+  liveDaysSinceAudit: number;
+  liveIncidentCount: number;
+  liveCritHighPercent: number;
+  liveRejectionRate: number;
+  livePressureSpikes: number;
 }
 
 // ── Analytics / Diagnostics ──────────────────────────────────────────────────

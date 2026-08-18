@@ -1,4 +1,4 @@
--- V11: ML model prediction scores per site
+-- V15: ML model prediction scores per site
 -- Stores the output of src/predict.py scored on each pipeline run.
 
 CREATE TABLE fact_predictions (

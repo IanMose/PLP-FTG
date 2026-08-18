@@ -1,0 +1,45 @@
+name: ETL Live Cron
+
+# Runs every 10 minutes and POSTs a fresh batch to the deployed backend.
+# Secrets required (set in GitHub → Settings → Secrets → Actions):
+#   ETL_PUSH_URL  — https://plp-ftg.onrender.com/api/etl/push
+#   ETL_API_KEY   — the same strong random value set in Render's ETL_API_KEY env var
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:          # allow manual trigger from GitHub UI
+
+defaults:
+  run:
+    working-directory: sentinel
+
+jobs:
+  run-etl:
+    name: Generate & Push ETL Batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 8        # abort if the pipeline hangs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: sentinel/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run ETL pipeline and push to backend
+        env:
+          ETL_PUSH_URL: ${{ secrets.ETL_PUSH_URL }}
+          ETL_API_KEY:  ${{ secrets.ETL_API_KEY }}
+        run: |
+          python3 -m src.run_pipeline \
+            --rows 200 \
+            --push-url "$ETL_PUSH_URL" \
+            --api-key  "$ETL_API_KEY"

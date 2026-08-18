@@ -11,7 +11,21 @@
  */
 
 import { getAuthToken } from "@/server/server-actions";
-import type { Alert, DataQualitySummary, IngestBatch, SiteDetail, SiteRiskSummary, TelemetrySummary } from "./types";
+import type {
+  Alert,
+  ControlChartData,
+  CorrelationData,
+  DataQualitySummary,
+  FeatureImportanceData,
+  IngestBatch,
+  PredictionDto,
+  SiteDetail,
+  SiteRiskSummary,
+  SurvivalCurveData,
+  TelemetrySummary,
+  WhatIfRequest,
+  WhatIfResponse,
+} from "./types";
 import type { AuthResponse, CreateUserRequest, SentinelUser, SentinelRole } from "./auth-types";
 
 const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
@@ -78,6 +92,28 @@ export async function fetchRiskSummary(): Promise<SiteRiskSummary[]> {
 /** GET /api/sites/{siteId} */
 export async function fetchSiteDetail(siteId: string): Promise<SiteDetail> {
   const res = await fetch(`${requireApiBase()}/api/sites/${siteId}`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/**
+ * POST /api/sites/{siteId}/simulate
+ *
+ * What-if risk simulation — no auth required (/api/sites/** is permitAll()).
+ * IMPORTANT: This is a plain fetch — do NOT use authedOpts() here.
+ * authedOpts() calls getAuthToken() which is a Server Action and will
+ * throw when invoked from a client-side event handler.
+ */
+export async function simulateRisk(
+  siteId: string,
+  overrides: WhatIfRequest,
+): Promise<WhatIfResponse> {
+  const res = await fetch(`${requireApiBase()}/api/sites/${siteId}/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: makeTimeoutSignal(),
+    body: JSON.stringify(overrides),
+  });
   if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
@@ -212,14 +248,6 @@ export async function fetchEtlConfig(): Promise<{ frontendRefreshMs: number; pol
 }
 
 // ─── Analytics (Stage C / D diagnostics) ─────────────────────────────────────
-
-import type {
-  ControlChartData,
-  CorrelationData,
-  FeatureImportanceData,
-  PredictionDto,
-  SurvivalCurveData,
-} from "./types";
 
 /** GET /api/analytics/survival-curves */
 export async function fetchSurvivalCurves(): Promise<SurvivalCurveData> {

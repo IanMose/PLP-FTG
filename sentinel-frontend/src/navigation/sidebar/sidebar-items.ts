@@ -4,8 +4,9 @@ import {
   type LucideIcon,
   Map,
   ShieldAlert,
-  Users,
   ShieldCheck,
+  ShoppingBag,
+  Users,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";

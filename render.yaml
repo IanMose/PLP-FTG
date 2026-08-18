@@ -58,8 +58,14 @@ services:
       # ── CORS — add your Render frontend URL once it is deployed ──────────
       # Example: https://sentinel-frontend.onrender.com
       - key: CORS_ALLOWED_ORIGINS
-        value: http://localhost:3000
+        value: http://localhost:3000  # update to your Vercel frontend URL after deploy
 
       # ── ETL — disabled in production (no Python runtime on this service) ─
       - key: ETL_ENABLED
         value: "false"
+
+      # ── ETL Push API Key — must match ETL_API_KEY GitHub Actions secret ──
+      # Generate with: openssl rand -base64 32
+      # Set the same value in GitHub → Settings → Secrets → Actions → ETL_API_KEY
+      - key: ETL_API_KEY
+        value: REPLACE_WITH_STRONG_RANDOM_KEY
