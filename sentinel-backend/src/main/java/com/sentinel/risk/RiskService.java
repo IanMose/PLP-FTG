@@ -5,6 +5,7 @@ import com.sentinel.common.dto.SiteRiskSummaryDto;
 import com.sentinel.common.dto.IncidentDto;
 import com.sentinel.common.dto.AuditDto;
 import com.sentinel.common.dto.TelemetryReadingDto;
+import com.sentinel.alert.AlertService;
 import com.sentinel.risk.dto.RiskSimulateRequestDto;
 import com.sentinel.risk.dto.RiskSimulateResponseDto;
 import com.sentinel.site.*;
@@ -54,17 +55,20 @@ public class RiskService {
     private final IncidentRepository incidentRepository;
     private final AuditRepository auditRepository;
     private final TelemetryService telemetryService;
+    private final AlertService alertService;
     private final PredictionService predictionService;
 
     public RiskService(SiteRepository siteRepository,
                        IncidentRepository incidentRepository,
                        AuditRepository auditRepository,
                        TelemetryService telemetryService,
+                       AlertService alertService) {
                        PredictionService predictionService) {
         this.siteRepository = siteRepository;
         this.incidentRepository = incidentRepository;
         this.auditRepository = auditRepository;
         this.telemetryService = telemetryService;
+        this.alertService = alertService;
         this.predictionService = predictionService;
     }
 
@@ -204,6 +208,11 @@ public class RiskService {
                 .build()
         ).collect(Collectors.toList());
 
+        // Fetch active alerts for this site to surface narrative on the detail page
+        List<com.sentinel.common.dto.AlertDto> activeAlerts = alertService.getAllAlerts().stream()
+                .filter(a -> siteId.equals(a.getSiteId()) && "active".equals(a.getStatus()))
+                .collect(Collectors.toList());
+
         return SiteDetailDto.builder()
                 .siteId(site.getSiteId())
                 .siteName(site.getSiteName())
@@ -220,6 +229,7 @@ public class RiskService {
                 .incidents(incidentDtos)
                 .audits(auditDtos)
                 .telemetryReadings(telemetryReadings)
+                .activeAlerts(activeAlerts)
                 .build();
     }
 

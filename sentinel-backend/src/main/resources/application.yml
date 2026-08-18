@@ -53,11 +53,22 @@ sentinel:
   etl:
     enabled: ${ETL_ENABLED:true}
     live-batch-path: ${ETL_LIVE_BATCH_PATH:../sentinel/data/warehouse/live_batch.json}
-    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}
-    api-key: ${ETL_API_KEY:}
-    poll-interval-ms: 120000
+    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}   # root of the Python project (contains run_live.sh)
+
+    # ── Timing & volume ─────────────────────────────────────────────────────
+    poll-interval-ms: 30000          # 30 seconds (fast for local dev)
     rows-per-cycle: 200
-    frontend-refresh-ms: 125000
+    frontend-refresh-ms: 32000       # 32 s
+
+  # ── LLM narrative enhancement (optional stretch goal) ─────────────────────
+  # Set GROQ_API_KEY env var to enable. If blank/missing, NarrativeService
+  # falls back to the templated narrative silently — no errors, no crashes.
+  # Get a free key at https://console.groq.com
+  llm:
+    groq-api-key: ${GROQ_API_KEY:}
+    model: llama-3.1-8b-instant
+    timeout-ms: 3000   # 3 second hard timeout — never block alert creation
+    enabled: ${LLM_ENABLED:true}
 
 ---
 # PostgreSQL profile — local dev only

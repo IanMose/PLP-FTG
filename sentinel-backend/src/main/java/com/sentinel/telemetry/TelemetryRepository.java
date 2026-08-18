@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TelemetryRepository extends JpaRepository<TelemetryEntity, String> {
@@ -23,6 +24,16 @@ public interface TelemetryRepository extends JpaRepository<TelemetryEntity, Stri
     List<TelemetryEntity> findLatestBySite(String site);
 
     /**
+     * Count pressure anomalies for a specific site since a given timestamp.
+     * Pressure is considered anomalous if > 800 psi or < 0 psi.
+     * Used by NarrativeService to enrich alert narratives with telemetry context.
+     */
+    @Query("SELECT COUNT(t) FROM TelemetryEntity t " +
+           "WHERE t.site = :siteId " +
+           "AND t.timestamp > :since " +
+           "AND (t.pressurePsi > 800 OR t.pressurePsi < 0)")
+    long countPressureSpikesForSiteSince(@Param("siteId") String siteId,
+                                         @Param("since") LocalDateTime since);
      * Counts pressure spikes for a single site directly.
      * Replaces the current approach of loading all sites and filtering in Java.
      */

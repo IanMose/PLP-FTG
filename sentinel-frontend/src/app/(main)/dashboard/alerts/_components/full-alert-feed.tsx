@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { acknowledgeAlert } from "@/lib/sentinel/api";
 import type { Alert, AlertStatus, SeverityBand } from "@/lib/sentinel/types";
 import { cn } from "@/lib/utils";
+import { NarrativeAlertCard } from "../../sentinel/_components/narrative-alert-card";
 
 interface FullAlertFeedProps {
   alerts: Alert[];
@@ -39,7 +40,6 @@ const statusStyles: Record<AlertStatus, string> = {
 function AlertRow({ alert }: { alert: Alert }) {
   const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
-  // Optimistic local status so the UI responds immediately
   const [localStatus, setLocalStatus] = useState<AlertStatus>(alert.status);
 
   const Icon = severityIcons[alert.severity];
@@ -51,7 +51,7 @@ function AlertRow({ alert }: { alert: Alert }) {
         await acknowledgeAlert(alert.id);
         setLocalStatus("acknowledged");
       } catch {
-        // Silent — the badge will revert on next page load if the call failed
+        // Silent — badge reverts on next page load if the call failed
       }
     });
   }
@@ -99,7 +99,7 @@ function AlertRow({ alert }: { alert: Alert }) {
 
         <TableCell
           className="text-right"
-          onClick={(e) => e.stopPropagation()} // don't toggle expand when clicking ack
+          onClick={(e) => e.stopPropagation()}
         >
           {localStatus === "active" && (
             <Button
@@ -118,15 +118,22 @@ function AlertRow({ alert }: { alert: Alert }) {
         </TableCell>
       </TableRow>
 
-      {/* Expanded detail row */}
+      {/* ── Expanded narrative row ── */}
       {expanded && (
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={7} className="py-3">
-            <div className="flex flex-col gap-2 pl-8 text-sm">
-              <p className="text-foreground/80">{alert.description}</p>
+        <TableRow className="bg-muted/20 hover:bg-muted/20">
+          {/* max-w-0 + w-full forces the cell to respect the table width instead of
+              expanding to fit its content, which causes horizontal page scroll */}
+          <TableCell colSpan={7} className="py-4 px-6 max-w-0 w-full">
+            <div className="w-full min-w-0 overflow-hidden">
+              <NarrativeAlertCard
+                alert={{ ...alert, status: localStatus }}
+                compact={false}
+              />
+
+              {/* Linked record IDs — shown below the card if present */}
               {alert.recordIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="text-muted-foreground text-xs">Linked records:</span>
+                <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                  <span className="text-muted-foreground text-xs font-medium">Linked records:</span>
                   {alert.recordIds.map((rid) => (
                     <span
                       key={rid}
@@ -136,13 +143,6 @@ function AlertRow({ alert }: { alert: Alert }) {
                     </span>
                   ))}
                 </div>
-              )}
-              {alert.acknowledgedAt && (
-                <p className="text-muted-foreground text-xs">
-                  Acknowledged{" "}
-                  {formatDistanceToNow(new Date(alert.acknowledgedAt), { addSuffix: true })}
-                  {alert.acknowledgedBy ? ` by ${alert.acknowledgedBy}` : ""}
-                </p>
               )}
             </div>
           </TableCell>
