@@ -20,4 +20,15 @@ public class AlertDto {
     private String createdAt;
     private String acknowledgedAt;
     private String acknowledgedBy;
+    /**
+     * Rich narrative text generated at alert-creation time by NarrativeService.
+     * May be null for alerts created before V11 migration.
+     */
+    private String narrative;
+
+    /**
+     * ISO timestamp of when the narrative was last written or refreshed.
+     * Used by the UI to show "narrative updated 2h ago" vs "generated 3 days ago".
+     */
+    private String narrativeUpdatedAt;
 }
