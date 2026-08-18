@@ -8,6 +8,8 @@ import com.sentinel.common.dto.TelemetryReadingDto;
 import com.sentinel.alert.AlertService;
 import com.sentinel.site.*;
 import com.sentinel.telemetry.TelemetryService;
+import com.sentinel.prediction.PredictionDto;
+import com.sentinel.prediction.PredictionService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -52,17 +54,20 @@ public class RiskService {
     private final AuditRepository auditRepository;
     private final TelemetryService telemetryService;
     private final AlertService alertService;
+    private final PredictionService predictionService;
 
     public RiskService(SiteRepository siteRepository,
                        IncidentRepository incidentRepository,
                        AuditRepository auditRepository,
                        TelemetryService telemetryService,
                        AlertService alertService) {
+                       PredictionService predictionService) {
         this.siteRepository = siteRepository;
         this.incidentRepository = incidentRepository;
         this.auditRepository = auditRepository;
         this.telemetryService = telemetryService;
         this.alertService = alertService;
+        this.predictionService = predictionService;
     }
 
     public List<SiteRiskSummaryDto> computeRiskSummary() {
@@ -95,6 +100,9 @@ public class RiskService {
             latestAudits.put((String) row[0], (LocalDateTime) row[1]);
         }
 
+        // Pre-fetch ML predictions (returns empty map if model not trained yet)
+        Map<String, Double> mlProbabilities = predictionService.getProbabilityBySite();
+
         LocalDate today = LocalDate.now();
 
         return sites.stream().map(site -> {
@@ -120,6 +128,8 @@ public class RiskService {
             int riskScore = computeRiskScore(incidents, critHigh, daysSinceAudit, rejectedRate, pressureSpikes);
             String severityBand = scoreToSeverityBand(riskScore);
 
+            Double mlProb = mlProbabilities.get(siteId);
+
             double[] coords = SITE_COORDS.getOrDefault(siteId, new double[]{0.0, 0.0});
 
             return SiteRiskSummaryDto.builder()
@@ -135,6 +145,8 @@ public class RiskService {
                     .daysSinceLastAudit(daysSinceAudit)
                     .correctedRate(Math.round(correctedRate * 100.0) / 100.0)
                     .rejectedRate(Math.round(rejectedRate * 100.0) / 100.0)
+                    .incidentProbability7d(mlProb)
+                    .modelRiskBand(PredictionDto.toBand(mlProb))
                     .build();
         }).collect(Collectors.toList());
     }

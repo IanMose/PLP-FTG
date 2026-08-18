@@ -1,6 +1,7 @@
 import { BackendError } from "@/components/backend-error";
-import { fetchSiteDetail } from "@/lib/sentinel/api";
+import { fetchSiteDetail, fetchSitePrediction } from "@/lib/sentinel/api";
 
+import { ModelPredictionCard } from "../../_components/model-prediction-card";
 import { SiteDetailView } from "../../_components/site-detail-view";
 
 interface PageProps {
@@ -10,8 +11,19 @@ interface PageProps {
 export default async function Page({ params }: PageProps) {
   const { siteId } = await params;
   try {
-    const site = await fetchSiteDetail(siteId);
-    return <SiteDetailView site={site} />;
+    // Fetch site detail and ML prediction in parallel
+    const [site, prediction] = await Promise.all([
+      fetchSiteDetail(siteId),
+      fetchSitePrediction(siteId).catch(() => null), // non-fatal if model not trained
+    ]);
+    return (
+      <div className="flex flex-col gap-4">
+        {prediction !== undefined && (
+          <ModelPredictionCard prediction={prediction} />
+        )}
+        <SiteDetailView site={site} />
+      </div>
+    );
   } catch (err) {
     return (
       <div className="p-6">

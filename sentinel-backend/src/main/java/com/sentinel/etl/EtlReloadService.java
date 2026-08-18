@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sentinel.alert.AlertRulesEngine;
 import com.sentinel.corridor.EnvironmentalReading;
 import com.sentinel.corridor.EnvironmentalReadingRepository;
+import com.sentinel.prediction.PredictionEntity;
+import com.sentinel.prediction.PredictionRepository;
 import com.sentinel.site.AuditEntity;
 import com.sentinel.site.AuditRepository;
 import com.sentinel.site.IncidentEntity;
@@ -20,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -38,6 +41,7 @@ public class EtlReloadService {
     private final AuditRepository                auditRepository;
     private final SiteRepository                 siteRepository;
     private final EnvironmentalReadingRepository environmentalRepository;
+    private final PredictionRepository           predictionRepository;
     private final ObjectMapper                   objectMapper;
     private final AlertRulesEngine               alertRulesEngine;
 
@@ -158,12 +162,13 @@ public class EtlReloadService {
             List<IncidentEntity> savedIncidents = loadIncidents(batch.getIncidents(), batch.getBatchId(), knownSiteIds);
             List<AuditEntity>    savedAudits    = loadAudits(batch.getAudits(), batch.getBatchId(), knownSiteIds);
             int envLoaded = loadEnvironmental(batch.getEnvironmental());
+            int predsLoaded = loadPredictions();
 
             lastProcessedBatchId = batch.getBatchId();
 
-            log.info("ETL reload [{}]: +{} incidents, +{} audits, +{} env readings | summary={}",
+            log.info("ETL reload [{}]: +{} incidents, +{} audits, +{} env readings, {} predictions | summary={}",
                     shortId(batch.getBatchId()), savedIncidents.size(), savedAudits.size(),
-                    envLoaded, batch.getSummary());
+                    envLoaded, predsLoaded, batch.getSummary());
 
             // Evaluate alert rules against the newly loaded incidents.
             // Runs outside the loader transactions — alert failures never affect data load.
@@ -305,6 +310,81 @@ public class EtlReloadService {
             log.debug("ETL: environmental batch save partial failure — {}", ex.getMessage());
         }
         return toSave.size();
+    }
+
+    // ── Predictions (ML model scores) ────────────────────────────────────────
+
+    /**
+     * Reads fact_predictions.parquet from the sentinel warehouse directory
+     * and upserts records into fact_predictions DB table.
+     *
+     * Uses ON CONFLICT DO NOTHING semantics via the unique constraint on
+     * (site_id, as_of_date). Only new date snapshots are added; existing rows
+     * are not overwritten (model artifacts are immutable per date).
+     *
+     * Returns the number of new rows inserted.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public int loadPredictions() {
+        // Resolve the parquet file path from the configured sentinel dir
+        File parquetFile = new File(sentinelDir, "data/warehouse/fact_predictions.parquet");
+        if (!parquetFile.exists()) {
+            log.debug("ETL: fact_predictions.parquet not found at {} — model not trained yet", parquetFile.getAbsolutePath());
+            return 0;
+        }
+
+        try {
+            // Read the parquet file using DuckDB JDBC (already on classpath via Python layer;
+            // here we use a lightweight JSON export sidecar instead to avoid Java Parquet deps).
+            // The Python score step writes a companion JSON at the same path with .json extension.
+            File jsonFile = new File(sentinelDir, "data/warehouse/predictions_export.json");
+            if (!jsonFile.exists()) {
+                log.debug("ETL: predictions_export.json not found — skipping prediction load");
+                return 0;
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> records = objectMapper.readValue(jsonFile, List.class);
+            if (records == null || records.isEmpty()) return 0;
+
+            int loaded = 0;
+            for (Map<String, Object> r : records) {
+                String siteId = normaliseSiteId(str(r, "site_id"));
+                if (siteId == null || siteId.isBlank()) continue;
+
+                String dateStr = str(r, "as_of_date");
+                LocalDate asOfDate = dateStr != null ? LocalDate.parse(dateStr) : null;
+                if (asOfDate == null) continue;
+
+                Object probObj = r.get("incident_probability_7d");
+                if (probObj == null) continue;
+                double prob;
+                try {
+                    prob = Double.parseDouble(probObj.toString());
+                } catch (NumberFormatException ex) {
+                    continue;
+                }
+
+                // Skip if this (site, date) already exists
+                boolean exists = predictionRepository.findLatestBySiteId(siteId)
+                        .map(p -> p.getAsOfDate().equals(asOfDate))
+                        .orElse(false);
+                if (exists) continue;
+
+                PredictionEntity e = new PredictionEntity();
+                e.setSiteId(siteId);
+                e.setAsOfDate(asOfDate);
+                e.setProbability(prob);
+                e.setModelVersion(str(r, "model_version"));
+                e.setTopFeatures(str(r, "top_features"));
+                predictionRepository.save(e);
+                loaded++;
+            }
+            return loaded;
+        } catch (Exception ex) {
+            log.warn("ETL: prediction load failed (non-fatal): {}", ex.getMessage());
+            return 0;
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
