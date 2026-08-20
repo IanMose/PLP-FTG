@@ -53,7 +53,7 @@ services:
       # IMPORTANT: replace this placeholder with a real secret before deploying.
       # Generate one with: openssl rand -base64 48
       - key: JWT_SECRET
-        value: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+        value: REPLACE_WITH_STRONG_RANDOM_KEY   # openssl rand -base64 48
 
       # ── CORS — add your Render frontend URL once it is deployed ──────────
       # Example: https://sentinel-frontend.onrender.com
@@ -68,4 +68,4 @@ services:
       # Generate with: openssl rand -base64 32
       # Set the same value in GitHub → Settings → Secrets → Actions → ETL_API_KEY
       - key: ETL_API_KEY
-        value: REPLACE_WITH_STRONG_RANDOM_KEY
+        value: REPLACE_WITH_STRONG_RANDOM_KEY   # openssl rand -base64 32
