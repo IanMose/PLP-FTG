@@ -29,4 +29,23 @@ public class SiteEntity {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    // KPC-specific columns added in V3 migration
+    @Column(name = "station_type")
+    private String stationType;
+
+    @Column(name = "region")
+    private String region;
+
+    @Column(name = "criticality")
+    private String criticality;
+
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "is_active")
+    private Boolean isActive;
 }

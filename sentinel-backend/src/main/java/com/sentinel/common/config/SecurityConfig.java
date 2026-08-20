@@ -69,7 +69,7 @@ public class SecurityConfig {
                     "/h2-console/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
-                    "/actuator/health"
+                    "/api/etl/push"        // ETL push — authenticated via X-ETL-Api-Key header
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
                 // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)
