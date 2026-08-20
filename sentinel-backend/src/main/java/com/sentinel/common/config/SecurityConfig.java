@@ -44,7 +44,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-ETL-Api-Key"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
@@ -68,7 +68,7 @@ public class SecurityConfig {
                     "/h2-console/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
-                    "/api/etl/push"        // ETL push — authenticated via X-ETL-Api-Key header
+                    "/api/data/ingest"         // ETL push — authenticated via X-ETL-Api-Key header
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
                 // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)

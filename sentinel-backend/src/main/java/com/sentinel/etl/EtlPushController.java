@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 /**
  * Receives a live ETL batch pushed by the Python pipeline running on GitHub Actions.
  *
- * POST /api/etl/push
+ * POST /api/data/ingest
  *   Header: X-ETL-Api-Key: <token>
  *   Body:   LiveBatchRecord JSON (same shape the pipeline writes to live_batch.json)
  *
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  * does not require a JWT — authentication is handled here via the header.
  */
 @RestController
-@RequestMapping("/api/etl")
+@RequestMapping("/api/data")
 @RequiredArgsConstructor
 @Slf4j
 public class EtlPushController {
@@ -36,7 +36,7 @@ public class EtlPushController {
     @Value("${sentinel.etl.api-key:}")
     private String etlApiKey;
 
-    @PostMapping("/push")
+    @PostMapping("/ingest")
     public ResponseEntity<Map<String, Object>> receiveBatch(
             @RequestHeader(value = "X-ETL-Api-Key", required = false) String apiKey,
             @RequestBody LiveBatchRecord batch) {

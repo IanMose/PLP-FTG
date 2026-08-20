@@ -2,8 +2,9 @@ name: ETL Live Cron
 
 # Runs every 10 minutes and POSTs a fresh batch to the deployed backend.
 # Secrets required (set in GitHub → Settings → Secrets → Actions):
-#   ETL_PUSH_URL  — https://sentinel-backend.onrender.com/api/etl/push
+#   ETL_PUSH_URL  — https://plp-ftg.onrender.com/api/data/ingest
 #   ETL_API_KEY   — the same strong random value set in Render's ETL_API_KEY env var
+#   BACKEND_BASE_URL — https://plp-ftg.onrender.com  (root URL, no trailing slash)
 
 on:
   schedule:
@@ -18,7 +19,7 @@ jobs:
   run-etl:
     name: Generate & Push ETL Batch
     runs-on: ubuntu-latest
-    timeout-minutes: 8        # abort if the pipeline hangs
+    timeout-minutes: 20       # allows 360 s wake ping + 3 push retries (~105 s) + pipeline runtime
 
     steps:
       - name: Checkout repository
@@ -33,6 +34,31 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # Ping the health endpoint to wake the Render free-tier container before
+      # the ETL push.  Render cold starts can take up to 5 minutes (300 s);
+      # we poll every 30 s for up to 360 s so the push step always finds a
+      # warm service.  Failure is non-fatal because run_pipeline.py retries internally.
+      - name: Wake Render backend (cold-start guard)
+        continue-on-error: true
+        env:
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+        run: |
+          if [ -n "$BACKEND_BASE_URL" ]; then
+            echo "Waiting for $BACKEND_BASE_URL/actuator/health to respond..."
+            for i in $(seq 1 12); do
+              STATUS=$(curl --silent --max-time 20 --output /dev/null --write-out "%{http_code}" \
+                "$BACKEND_BASE_URL/actuator/health" || echo "000")
+              echo "  attempt $i/12 → HTTP $STATUS"
+              if [ "$STATUS" = "200" ]; then
+                echo "Backend is up."
+                break
+              fi
+              sleep 30
+            done
+          else
+            echo "BACKEND_BASE_URL not set — skipping warm-up ping"
+          fi
 
       - name: Run ETL pipeline and push to backend
         env:
