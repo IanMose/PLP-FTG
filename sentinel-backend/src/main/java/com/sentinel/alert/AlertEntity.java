@@ -71,4 +71,7 @@ public class AlertEntity {
      */
     @Column(name = "narrative_incident_count")
     private Long narrativeIncidentCount = 0L;
+
+    @Column(name = "required_qualification")
+    private String requiredQualification;
 }

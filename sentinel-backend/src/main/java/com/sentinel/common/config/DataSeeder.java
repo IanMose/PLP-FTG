@@ -52,11 +52,14 @@ public class DataSeeder implements ApplicationRunner {
         log.info("DataSeeder: checking seed accounts...");
 
         List<SeedAccount> accounts = List.of(
-            new SeedAccount("Sentinel Admin", "admin@sentinel.kpc",    "Admin"),
-            new SeedAccount("Jane Mwangi",    "manager@sentinel.kpc",  "HSE Manager"),
-            new SeedAccount("David Otieno",   "auditor@sentinel.kpc",  "Auditor"),
-            new SeedAccount("Amina Kariuki",  "analyst@sentinel.kpc",  "Analyst"),
-            new SeedAccount("Tom Kiplangat",  "viewer@sentinel.kpc",   "Viewer")
+            new SeedAccount("Sentinel Admin",    "admin@sentinel.kpc",     "Admin"),
+            new SeedAccount("Jane Mwangi",       "manager@sentinel.kpc",   "HSE Manager"),
+            new SeedAccount("David Otieno",      "auditor@sentinel.kpc",   "Auditor"),
+            new SeedAccount("Amina Kariuki",     "analyst@sentinel.kpc",   "Analyst"),
+            new SeedAccount("Tom Kiplangat",     "viewer@sentinel.kpc",    "Viewer"),
+            new SeedAccount("Kariuki Wambua",    "tech@sentinel.kpc",      "Field Technician"),
+            new SeedAccount("Beatrice Mutua",    "station@sentinel.kpc",   "Station Manager"),
+            new SeedAccount("ML Admin User",     "ml.admin@sentinel.kpc",  "ML Admin")
         );
 
         int created = 0;

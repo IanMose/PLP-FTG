@@ -32,4 +32,7 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
     @Query("SELECT COUNT(i) FROM IncidentEntity i WHERE i.siteId = :siteId AND i.incidentDate > :since")
     long countBySiteIdAndIncidentDateAfter(@Param("siteId") String siteId,
                                            @Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(i) FROM IncidentEntity i")
+    long countAll();
 }

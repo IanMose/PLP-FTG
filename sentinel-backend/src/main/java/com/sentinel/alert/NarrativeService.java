@@ -97,6 +97,34 @@ public class NarrativeService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * Generate a narrative for RULE_HAZARD_REPORT_RISK_RATING.
+     */
+    public String forHazardRiskRating(com.sentinel.hazard.HazardReportEntity report, String severity) {
+        try {
+            String site = displayName(report.getSiteId());
+            int riskRating = report.getRiskRating() != null ? report.getRiskRating() : 0;
+            int likelihood = report.getLikelihoodRating() != null ? report.getLikelihoodRating() : 0;
+            int sev = report.getSeverityRating() != null ? report.getSeverityRating() : 0;
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.format(
+                "⚠ %s escalated to %s: hazard report received — category '%s', " +
+                "risk rated %d/25 (likelihood %d/5 × severity %d/5). ",
+                site, severity, report.getCategory(), riskRating, likelihood, sev));
+            if (report.getMitigationNote() != null && !report.getMitigationNote().isBlank()) {
+                sb.append(String.format("Assessor mitigation note: '%s'. ", report.getMitigationNote()));
+            }
+            sb.append("HSE Officer review and CAPA assignment required.");
+            return enhanceWithLlm(sb.toString());
+        } catch (Exception ex) {
+            log.warn("NarrativeService: fallback narrative for HAZARD_REPORT site={}", report.getSiteId(), ex);
+            return String.format("Hazard report risk assessment at %s: risk rating %d/25 — escalated to %s.",
+                    displayName(report.getSiteId()),
+                    report.getRiskRating() != null ? report.getRiskRating() : 0,
+                    severity);
+        }
+    }
+
+    /**
      * Generate a narrative for RULE_HIGH_REJECT_RATE.
      *
      * @param siteId      affected site
