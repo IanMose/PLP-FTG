@@ -1,4 +1,4 @@
--- V18: Additive columns on existing tables — purely non-breaking
+-- V26: Additive columns on existing tables — purely non-breaking
 
 -- Process E linkage: flag a CAPA as requiring a maintenance work order
 ALTER TABLE capa ADD COLUMN IF NOT EXISTS requires_work_order BOOLEAN NOT NULL DEFAULT FALSE;
