@@ -35,6 +35,7 @@ import type {
   NavMainLinkItem,
   NavMainParentItem,
 } from "@/navigation/sidebar/sidebar-items";
+import { useAuthStore } from "@/stores/auth/auth-store";
 
 interface NavMainProps {
   readonly items: readonly NavGroup[];
@@ -44,6 +45,7 @@ interface NavItemProps {
   readonly isItemActive: (item: NavMainItem) => boolean;
   readonly isSubItemActive: (url: string) => boolean;
   readonly isSubmenuOpen: (item: NavMainParentItem) => boolean;
+  readonly userRole?: string;
 }
 
 interface NavLinkItemProps {
@@ -68,6 +70,7 @@ interface NavCollapsibleItemProps {
   readonly isActive: boolean;
   readonly defaultOpen: boolean;
   readonly isSubItemActive: (url: string) => boolean;
+  readonly userRole?: string;
 }
 
 function CollapsedIconFallback({ title }: { title: string }) {
@@ -84,22 +87,22 @@ function hasSubItems(item: NavMainItem): item is NavMainParentItem {
 
 export function NavMain({ items }: NavMainProps) {
   const path = usePathname();
+  const role = useAuthStore((s) => s.user?.role ?? "");
 
   const isItemActive = (item: NavMainItem) => {
     if (hasSubItems(item)) {
       return item.subItems.some((sub) => path.startsWith(sub.url));
     }
-
     return path === item.url;
   };
 
-  const isSubItemActive = (url: string) => {
-    return path === url;
-  };
+  const isSubItemActive = (url: string) => path === url;
+  const isSubmenuOpen = (item: NavMainParentItem) =>
+    item.subItems.some((sub) => path.startsWith(sub.url));
 
-  const isSubmenuOpen = (item: NavMainParentItem) => {
-    return item.subItems.some((sub) => path.startsWith(sub.url));
-  };
+  const visibleGroups = items.filter(
+    (g) => !g.requiredRoles || g.requiredRoles.includes(role),
+  );
 
   return (
     <>
@@ -126,7 +129,7 @@ export function NavMain({ items }: NavMainProps) {
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-      {items.map((group) => (
+      {visibleGroups.map((group) => (
         <SidebarGroup key={group.id}>
           {group.label && (
             <SidebarGroupLabel className="group-data-[collapsible=icon]:pointer-events-none">
@@ -142,6 +145,7 @@ export function NavMain({ items }: NavMainProps) {
                   isItemActive={isItemActive}
                   isSubItemActive={isSubItemActive}
                   isSubmenuOpen={isSubmenuOpen}
+                  userRole={role}
                 />
               ))}
             </SidebarMenu>
@@ -152,11 +156,13 @@ export function NavMain({ items }: NavMainProps) {
   );
 }
 
-function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen }: NavItemProps) {
+function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen, userRole }: NavItemProps) {
   const { state, isMobile } = useSidebar();
   const isCollapsedDesktop = state === "collapsed" && !isMobile;
 
   if (!hasSubItems(item)) {
+    // Filter link items by role
+    if ("roles" in item && item.roles && userRole && !item.roles.includes(userRole)) return null;
     return <NavLinkItem item={item} isActive={isItemActive(item)} showIconFallback={isCollapsedDesktop} />;
   }
 
@@ -170,6 +176,7 @@ function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen }: NavItem
       isActive={isItemActive(item)}
       defaultOpen={isSubmenuOpen(item)}
       isSubItemActive={isSubItemActive}
+      userRole={userRole}
     />
   );
 }
@@ -248,7 +255,7 @@ function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemPro
   );
 }
 
-function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: NavCollapsibleItemProps) {
+function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive, userRole }: NavCollapsibleItemProps) {
   const Icon = item.icon;
 
   return (
@@ -265,7 +272,7 @@ function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: Na
 
         <CollapsibleContent>
           <SidebarMenuSub>
-            {item.subItems.map((subItem) => {
+            {item.subItems.filter(sub => !sub.roles || !userRole || sub.roles.includes(userRole)).map((subItem) => {
               const SubIcon = subItem.icon;
 
               return (

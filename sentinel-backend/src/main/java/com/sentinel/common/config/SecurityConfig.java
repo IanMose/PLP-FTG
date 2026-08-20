@@ -16,6 +16,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.HttpMethod;
 
 import java.util.Arrays;
 import java.util.List;
@@ -80,8 +81,24 @@ public class SecurityConfig {
                     "/api/telemetry/**",
                     "/api/ingestion/**",
                     "/api/config/**",
-                    "/api/analytics/**"
+                    "/api/analytics/**",
+                    "/api/ml/champion-artifact-path"
                 ).permitAll()
+                // Hazard reports — any authenticated user can submit; HSE roles can list
+                .requestMatchers(HttpMethod.POST, "/api/hazard-reports").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/hazard-reports/**").authenticated()
+                .requestMatchers(HttpMethod.PATCH, "/api/hazard-reports/**").authenticated()
+                // CAPAs — HSE roles create; any auth reads/updates their own
+                .requestMatchers(HttpMethod.POST, "/api/capas").hasAnyRole("ADMIN","HSE_MANAGER","AUDITOR")
+                .requestMatchers("/api/capas/**").authenticated()
+                // Work Orders (Process E — Maintenance)
+                .requestMatchers(HttpMethod.POST, "/api/work-orders").hasAnyRole("ADMIN","HSE_MANAGER","AUDITOR","STATION_MANAGER","FIELD_TECHNICIAN")
+                .requestMatchers(HttpMethod.PATCH, "/api/work-orders/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/work-orders/**").authenticated()
+                // Technicians
+                .requestMatchers("/api/technicians/**").hasAnyRole("ADMIN","HSE_MANAGER","AUDITOR")
+                // ML Admin — all endpoints require ML_ADMIN or ADMIN
+                .requestMatchers("/api/ml/**").hasAnyRole("ADMIN","ML_ADMIN")
                 // User management requires Admin role
                 .requestMatchers("/api/users/**").hasAnyRole("ADMIN")
                 .requestMatchers("/api/roles/**").hasAnyRole("ADMIN")

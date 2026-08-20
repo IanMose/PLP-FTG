@@ -327,6 +327,24 @@ public class AlertRulesEngine {
         return 0;
     }
 
+    // ── Rule 5: Hazard report risk rating ─────────────────────────────────────
+
+    /**
+     * Called by HazardReportService when a risk assessment yields rating >= 10.
+     * Returns the created alert ID (or null if deduplication skipped creation).
+     */
+    @Transactional
+    public String createHazardAlert(com.sentinel.hazard.HazardReportEntity report, String severity) {
+        String rule = "HAZARD_REPORT_RISK_RATING";
+        String narrative = narrativeService.forHazardRiskRating(report, severity);
+        return maybeCreateAlertReturningId(
+                report.getSiteId(), rule, severity,
+                String.format("Hazard risk assessment — %s", report.getSiteId()),
+                String.format("Hazard report (category: %s) rated %d/25 — escalated to %s.",
+                        report.getCategory(), report.getRiskRating(), severity),
+                "", narrative);
+    }
+
     // ── Shared: deduplication + persist ──────────────────────────────────────
 
     /**
@@ -337,6 +355,12 @@ public class AlertRulesEngine {
     private void maybeCreateAlert(String siteId, String rule, String severity,
                                   String title, String description, String recordIds,
                                   String narrative) {
+        maybeCreateAlertReturningId(siteId, rule, severity, title, description, recordIds, narrative);
+    }
+
+    private String maybeCreateAlertReturningId(String siteId, String rule, String severity,
+                                  String title, String description, String recordIds,
+                                  String narrative) {
         boolean alreadyActive = alertRepository
                 .findFirstBySiteIdAndRuleAndStatus(siteId, rule, "active")
                 .isPresent();
@@ -344,7 +368,7 @@ public class AlertRulesEngine {
         if (alreadyActive) {
             log.debug("AlertRulesEngine: active alert already exists for site={} rule='{}' — skipping",
                     siteId, rule);
-            return;
+            return null;
         }
 
         AlertEntity alert = new AlertEntity();
@@ -359,12 +383,12 @@ public class AlertRulesEngine {
         alert.setCreatedAt(LocalDateTime.now());
         alert.setNarrative(narrative);
         alert.setNarrativeUpdatedAt(LocalDateTime.now());
-        // Seed the incident count so the staleness check has a baseline to compare against.
         alert.setNarrativeIncidentCount(safeIncidentCount(siteId, 30));
 
         alertRepository.save(alert);
         log.info("AlertRulesEngine: created alert [{}] site={} rule='{}' narrative-length={}",
                 alert.getId(), siteId, rule,
                 narrative != null ? narrative.length() : 0);
+        return alert.getId();
     }
 }

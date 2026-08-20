@@ -1,4 +1,6 @@
 spring:
+  profiles:
+    active: postgres
   application:
     name: sentinel-backend
 
@@ -48,17 +50,17 @@ sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
-    secret: ${JWT_SECRET:Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor}
-    expiration-ms: 86400000  # 24 hours
+    secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+    expiration-ms: 86400000 # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
     live-batch-path: ${ETL_LIVE_BATCH_PATH:../sentinel/data/warehouse/live_batch.json}
-    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}   # root of the Python project (contains run_live.sh)
+    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel} # root of the Python project (contains run_live.sh)
 
     # ── Timing & volume ─────────────────────────────────────────────────────
-    poll-interval-ms: 30000          # 30 seconds (fast for local dev)
+    poll-interval-ms: 120000 # 2 minutes
     rows-per-cycle: 200
-    frontend-refresh-ms: 32000       # 32 s
+    frontend-refresh-ms: 125000 # 2 min 5 s
 
   # ── LLM narrative enhancement (optional stretch goal) ─────────────────────
   # Set GROQ_API_KEY env var to enable. If blank/missing, NarrativeService
@@ -67,7 +69,7 @@ sentinel:
   llm:
     groq-api-key: ${GROQ_API_KEY:}
     model: llama-3.1-8b-instant
-    timeout-ms: 3000   # 3 second hard timeout — never block alert creation
+    timeout-ms: 3000 # 3 second hard timeout — never block alert creation
     enabled: ${LLM_ENABLED:true}
 
 ---

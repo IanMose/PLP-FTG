@@ -51,4 +51,7 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
         WHERE i.siteId = :siteId
         """)
     SiteIncidentScalars getScalarsForSite(@Param("siteId") String siteId);
+
+    @Query("SELECT COUNT(i) FROM IncidentEntity i")
+    long countAll();
 }

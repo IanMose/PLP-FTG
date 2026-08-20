@@ -309,3 +309,162 @@ export async function fetchSitePrediction(siteId: string): Promise<PredictionDto
   if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
+
+// ─── V2: Work Orders (Process E — Maintenance) ───────────────────────────────
+
+export interface WorkOrder {
+  id: string;
+  siteId: string;
+  capaId?: string;
+  title: string;
+  description?: string;
+  assignedTechnicianId?: number;
+  status: "open" | "in_progress" | "completed" | "verified";
+  priority: "low" | "medium" | "high" | "critical";
+  dueDate?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWorkOrderPayload {
+  siteId: string;
+  capaId?: string;
+  title: string;
+  description?: string;
+  assignedTechnicianId?: number;
+  priority?: string;
+  dueDate?: string;
+}
+
+/** GET /api/work-orders */
+export async function fetchWorkOrders(params?: {
+  siteId?: string;
+  capaId?: string;
+  status?: string;
+  technicianId?: number;
+}): Promise<WorkOrder[]> {
+  const url = new URL(`${requireApiBase()}/api/work-orders`);
+  if (params?.siteId) url.searchParams.set("siteId", params.siteId);
+  if (params?.capaId) url.searchParams.set("capaId", params.capaId);
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.technicianId) url.searchParams.set("technicianId", String(params.technicianId));
+  const res = await fetch(url.toString(), await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** POST /api/work-orders */
+export async function createWorkOrder(payload: CreateWorkOrderPayload): Promise<WorkOrder> {
+  const opts = await authedOpts();
+  const res = await fetch(`${requireApiBase()}/api/work-orders`, {
+    ...opts,
+    method: "POST",
+    headers: { ...(opts.headers as Record<string, string>), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** PATCH /api/work-orders/{id}/status */
+export async function updateWorkOrderStatus(id: string, status: string): Promise<WorkOrder> {
+  const opts = await authedOpts();
+  const res = await fetch(`${requireApiBase()}/api/work-orders/${id}/status`, {
+    ...opts,
+    method: "PATCH",
+    headers: { ...(opts.headers as Record<string, string>), "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── V2: ML — Drift Detection ────────────────────────────────────────────────
+
+export interface DriftSummary {
+  championId: string;
+  championVersion: string;
+  baselineAccuracy?: number;
+  recentAccuracy?: number;
+  deltaPercentagePoints?: number;
+  driftStatus: "normal" | "warning" | "critical" | "insufficient_data" | "no_champion";
+  trend: Array<{ computedAt: string; accuracy: number; sampleSize: number }>;
+}
+
+/** GET /api/ml/drift */
+export async function fetchDriftSummary(): Promise<DriftSummary> {
+  const res = await fetch(`${requireApiBase()}/api/ml/drift`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── V2: ML — Retraining Schedule ───────────────────────────────────────────
+
+export interface RetrainingSchedule {
+  id: string;
+  status: "disabled" | "scheduled" | "running" | "completed" | "failed" | "awaiting_review";
+  cadence: string;
+  nextRunAt?: string;
+  lastRunId?: string;
+  updatedBy?: string;
+  updatedAt: string;
+}
+
+/** GET /api/ml/retraining/status */
+export async function fetchRetrainingStatus(): Promise<RetrainingSchedule> {
+  const res = await fetch(`${requireApiBase()}/api/ml/retraining/status`, await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** POST /api/ml/retraining/schedule */
+export async function enableRetrainingSchedule(cadence: string = "weekly"): Promise<RetrainingSchedule> {
+  const opts = await authedOpts();
+  const res = await fetch(`${requireApiBase()}/api/ml/retraining/schedule`, {
+    ...opts,
+    method: "POST",
+    headers: { ...(opts.headers as Record<string, string>), "Content-Type": "application/json" },
+    body: JSON.stringify({ cadence }),
+  });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+/** POST /api/ml/retraining/disable */
+export async function disableRetrainingSchedule(): Promise<RetrainingSchedule> {
+  const opts = await authedOpts();
+  const res = await fetch(`${requireApiBase()}/api/ml/retraining/disable`, { ...opts, method: "POST" });
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
+
+// ─── V2: ML — Model Comparison ───────────────────────────────────────────────
+
+export interface FeatureImportanceDiffEntry {
+  feature: string;
+  championWeight: number;
+  challengerWeight: number;
+  delta: number;
+  isNew: boolean;
+}
+
+export interface ModelComparisonResult {
+  champion?: Record<string, unknown>;
+  challenger?: Record<string, unknown>;
+  featureImportanceDiff: FeatureImportanceDiffEntry[];
+  metricDiff: { precisionDelta?: number; recallDelta?: number; f1Delta?: number };
+}
+
+/** GET /api/ml/models/compare */
+export async function fetchModelComparison(
+  championId?: string,
+  challengerId?: string,
+): Promise<ModelComparisonResult> {
+  const url = new URL(`${requireApiBase()}/api/ml/models/compare`);
+  if (championId) url.searchParams.set("champion", championId);
+  if (challengerId) url.searchParams.set("challenger", challengerId);
+  const res = await fetch(url.toString(), await authedOpts());
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  return res.json();
+}
