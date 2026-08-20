@@ -44,10 +44,15 @@ docs/current-stage-validation-report.md
 docs/stage2-alert-gaps-backlog.md
 sentinel-system-summary.md
 hackathon_reflection.md
+docs/stage3-hse-mvp-build-plan.md
+docs/stage4-ml-hitl-portal-build-plan.md
+docs/sentinel-mvp-master-build-plan.md
 
 # === Kiro / internal tooling ===
 .superpowers/
 .worktrees/
+.kiro/steering/
+.kiro/skills
 
 # === Internal planning docs ===
 docs/superpowers/

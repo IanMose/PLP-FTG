@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -30,8 +31,7 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
      */
     @Query("SELECT COUNT(i) FROM IncidentEntity i WHERE i.siteId = :siteId AND i.incidentDate > :since")
     long countBySiteIdAndIncidentDateAfter(@Param("siteId") String siteId,
-                                           @Param("since") java.time.LocalDateTime since);
-
+                                           @Param("since") LocalDateTime since);
     /** Projection interface for aggregate incident scalars per site. */
     interface SiteIncidentScalars {
         Long getTotal();    // COUNT — never null, but boxed for consistency
@@ -51,4 +51,7 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
         WHERE i.siteId = :siteId
         """)
     SiteIncidentScalars getScalarsForSite(@Param("siteId") String siteId);
+
+    @Query("SELECT COUNT(i) FROM IncidentEntity i")
+    long countAll();
 }

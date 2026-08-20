@@ -1,9 +1,5 @@
 import type {
   Alert,
-  ComplianceNetworkSummary,
-  ComplianceSummary,
-  ComplianceTrendPoint,
-  ComplianceViolation,
   DataQualitySummary,
   IngestBatch,
   SiteDetail,
@@ -470,71 +466,3 @@ export function getMockSiteDetail(siteId: string): SiteDetail {
   };
 }
 
-// ─── Mock Compliance Data ───────────────────────────────────────────────────
-
-export const mockComplianceNetwork: ComplianceNetworkSummary = {
-  networkOcs: 82.4,
-  networkSafetyScore: 79.8,
-  networkEnvironmentalScore: 85.2,
-  networkAssetIntegrityScore: 81.6,
-  networkRegulatoryScore: 83.9,
-  networkRag: "AMBER",
-  totalOpenViolations: 14,
-  totalCriticalViolations: 3,
-  calculatedAt: "2026-07-24T06:00:00Z",
-  sites: [
-    { siteId: "site-001", siteName: "Nairobi Terminal",                  region: "Nairobi",     criticality: "Critical", overallScore: 80.1, overallRag: "AMBER", safetyScore: 79.5, safetyRag: "AMBER", environmentalScore: 82.0, environmentalRag: "AMBER", assetIntegrityScore: 79.0, assetIntegrityRag: "AMBER", regulatoryScore: 80.0, regulatoryRag: "AMBER", openViolations: 3 },
-    { siteId: "site-002", siteName: "Mombasa Terminal (Kipevu / PS14)",  region: "Coast",       criticality: "Critical", overallScore: 74.1, overallRag: "RED",   safetyScore: 68.0, safetyRag: "RED",   environmentalScore: 80.0, environmentalRag: "AMBER", assetIntegrityScore: 76.0, assetIntegrityRag: "AMBER", regulatoryScore: 75.0, regulatoryRag: "AMBER", openViolations: 3 },
-    { siteId: "site-003", siteName: "Makueni Pipeline Section (Thange)", region: "Makueni",     criticality: "Critical", overallScore: 69.4, overallRag: "RED",   safetyScore: 64.0, safetyRag: "RED",   environmentalScore: 76.0, environmentalRag: "AMBER", assetIntegrityScore: 68.0, assetIntegrityRag: "RED",   regulatoryScore: 72.0, regulatoryRag: "RED",   openViolations: 4 },
-    { siteId: "site-004", siteName: "Nakuru Depot",                      region: "Rift Valley", criticality: "High",     overallScore: 78.3, overallRag: "AMBER", safetyScore: 80.0, safetyRag: "AMBER", environmentalScore: 84.0, environmentalRag: "AMBER", assetIntegrityScore: 71.0, assetIntegrityRag: "RED",   regulatoryScore: 80.0, regulatoryRag: "AMBER", openViolations: 2 },
-    { siteId: "site-005", siteName: "Eldoret Terminal",                  region: "Rift Valley", criticality: "High",     overallScore: 71.2, overallRag: "RED",   safetyScore: 75.0, safetyRag: "AMBER", environmentalScore: 82.0, environmentalRag: "AMBER", assetIntegrityScore: 62.0, assetIntegrityRag: "RED",   regulatoryScore: 78.0, regulatoryRag: "AMBER", openViolations: 3 },
-    { siteId: "site-006", siteName: "Sinendet Pump Station",             region: "Bomet",       criticality: "Critical", overallScore: 68.0, overallRag: "RED",   safetyScore: 70.0, safetyRag: "RED",   environmentalScore: 64.0, environmentalRag: "RED",   assetIntegrityScore: 70.0, assetIntegrityRag: "RED",   regulatoryScore: 70.0, regulatoryRag: "RED",   openViolations: 4 },
-    { siteId: "site-007", siteName: "Kisumu Terminal (PS28)",            region: "Nyanza",      criticality: "High",     overallScore: 88.0, overallRag: "GREEN", safetyScore: 90.0, safetyRag: "GREEN", environmentalScore: 91.0, environmentalRag: "GREEN", assetIntegrityScore: 85.0, assetIntegrityRag: "AMBER", regulatoryScore: 87.0, regulatoryRag: "GREEN", openViolations: 1 },
-  ],
-};
-
-export const mockViolations: ComplianceViolation[] = [
-  { id: 1, ruleId: "BR-S03", ruleName: "PTW Authorisation Before High-Risk Work",     indicatorId: "PTWCI", domainId: "SCD",  siteId: "site-002", siteName: "Mombasa Terminal (Kipevu / PS14)",  assetReference: "CMP-INC-0002", severity: "Critical", violationDate: "2026-07-03", description: "Hot work commenced on Mombasa manifold without valid PTW.",                                      recommendedAction: "Immediate stop-work; mandatory PTW refresher for all supervisors.",                        status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 2, ruleId: "BR-A04", ruleName: "Leak Detection System Availability",           indicatorId: "LDCI",  domainId: "AICD", siteId: "site-005", siteName: "Eldoret Terminal",                  assetReference: "CMP-INC-0005", severity: "Critical", violationDate: "2026-07-08", description: "SCADA CPM unavailable for 2.5 hours on Eldoret segment.",                                         recommendedAction: "Immediate SCADA team alert; manual patrol during downtime; investigate root cause.",        status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 3, ruleId: "BR-S03", ruleName: "PTW Authorisation Before High-Risk Work",     indicatorId: "PTWCI", domainId: "SCD",  siteId: "site-003", siteName: "Makueni Pipeline Section (Thange)",  assetReference: "CMP-INC-0017", severity: "Critical", violationDate: "2026-07-07", description: "Confined space entry without completed gas test at Makueni section.",                              recommendedAction: "Stop-work; disciplinary review; mandatory confined space PTW re-briefing.",                status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 4, ruleId: "BR-A01", ruleName: "Asset Inspection Not Overdue",                 indicatorId: "ICI",   domainId: "AICD", siteId: "site-001", siteName: "Nairobi Terminal",                  assetReference: "NBW-PV-003",   severity: "High",     violationDate: "2026-07-20", description: "Pressure vessel NBW-PV-003 inspection 38 days overdue.",                                          recommendedAction: "Schedule inspection immediately; conduct risk assessment pending inspection.",               status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 5, ruleId: "BR-E01", ruleName: "Water Discharge Parameter Within NEMA Limits", indicatorId: "WQCI",  domainId: "ECD",  siteId: "site-006", siteName: "Sinendet Pump Station",             assetReference: "CMP-INC-0019", severity: "High",     violationDate: "2026-07-09", description: "TPH level 1.4x NEMA permitted limit at Sinendet Station.",                                       recommendedAction: "Identify source; isolate discharge; notify NEMA within 24h; inspect oil/water separator.", status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 6, ruleId: "BR-A03", ruleName: "Corrosion Monitoring Point Coverage",          indicatorId: "CMCI",  domainId: "AICD", siteId: "site-004", siteName: "Nakuru Depot",                      assetReference: "NKR-012",       severity: "High",     violationDate: "2026-07-14", description: "Segment NKR-012 corrosion monitoring point 18 days past required interval.",                   recommendedAction: "Dispatch corrosion technician; verify CP system; schedule immediate reading.",              status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 7, ruleId: "BR-R02", ruleName: "Corrective Action Closed By Target Date",     indicatorId: "CACI",  domainId: "RCD",  siteId: "site-001", siteName: "Nairobi Terminal",                  assetReference: "CAR-2026-0047", severity: "High",     violationDate: "2026-06-13", description: "CAR-2026-0047 (leak detection calibration) is 41 days past target date.",                      recommendedAction: "Escalate to Maintenance Superintendent; resolve within 5 working days.",                   status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-  { id: 8, ruleId: "BR-S01", ruleName: "PPE Field Observation Compliance",            indicatorId: "PCI",   domainId: "SCD",  siteId: "site-002", siteName: "Mombasa Terminal (Kipevu / PS14)",  assetReference: "CMP-INC-0001", severity: "High",     violationDate: "2026-07-01", description: "3 workers observed without hard hats in pump hall.",                                              recommendedAction: "Issue verbal warning; toolbox talk within 24h; re-inspect within 48h.",                    status: "OPEN",  closedDate: null, createdAt: "2026-07-22T08:00:00Z" },
-];
-
-export const mockComplianceTrend: ComplianceTrendPoint[] = [
-  { weekStart: "2026-05-19", ocsScore: 88.2, safetyScore: 86.0, environmentalScore: 90.1, assetIntegrityScore: 87.5, regulatoryScore: 89.2 },
-  { weekStart: "2026-05-26", ocsScore: 87.6, safetyScore: 85.4, environmentalScore: 89.8, assetIntegrityScore: 86.8, regulatoryScore: 88.7 },
-  { weekStart: "2026-06-02", ocsScore: 86.9, safetyScore: 84.9, environmentalScore: 89.2, assetIntegrityScore: 85.9, regulatoryScore: 88.0 },
-  { weekStart: "2026-06-09", ocsScore: 86.1, safetyScore: 84.1, environmentalScore: 88.6, assetIntegrityScore: 85.0, regulatoryScore: 87.2 },
-  { weekStart: "2026-06-16", ocsScore: 85.4, safetyScore: 83.4, environmentalScore: 87.9, assetIntegrityScore: 84.2, regulatoryScore: 86.5 },
-  { weekStart: "2026-06-23", ocsScore: 84.8, safetyScore: 82.8, environmentalScore: 87.3, assetIntegrityScore: 83.4, regulatoryScore: 85.8 },
-  { weekStart: "2026-06-30", ocsScore: 84.0, safetyScore: 82.1, environmentalScore: 86.6, assetIntegrityScore: 82.5, regulatoryScore: 85.0 },
-  { weekStart: "2026-07-07", ocsScore: 83.3, safetyScore: 81.4, environmentalScore: 86.0, assetIntegrityScore: 81.7, regulatoryScore: 84.3 },
-  { weekStart: "2026-07-14", ocsScore: 83.5, safetyScore: 80.8, environmentalScore: 86.4, assetIntegrityScore: 82.8, regulatoryScore: 84.8 },
-  { weekStart: "2026-07-21", ocsScore: 82.4, safetyScore: 79.8, environmentalScore: 85.2, assetIntegrityScore: 81.6, regulatoryScore: 83.9 },
-];
-
-export function getMockComplianceSite(siteId: string): ComplianceSummary {
-  const card = mockComplianceNetwork.sites.find((s) => s.siteId === siteId);
-  const name = card?.siteName ?? siteId;
-  return {
-    siteId,
-    siteName: name,
-    overallScore: card?.overallScore ?? 82.4,
-    overallRag: card?.overallRag ?? "AMBER",
-    openViolationCount: card?.openViolations ?? 0,
-    criticalViolationCount: 0,
-    periodStart: "2026-06-24",
-    periodEnd: "2026-07-24",
-    calculatedAt: "2026-07-24T06:00:00Z",
-    domains: [
-      { domainId: "SCD",  domainName: "Safety Compliance",          domainWeight: 0.30, score: card?.safetyScore ?? 80,           ragStatus: card?.safetyRag ?? "AMBER",           displayOrder: 1, indicators: [] },
-      { domainId: "ECD",  domainName: "Environmental Compliance",   domainWeight: 0.25, score: card?.environmentalScore ?? 85,    ragStatus: card?.environmentalRag ?? "AMBER",    displayOrder: 2, indicators: [] },
-      { domainId: "AICD", domainName: "Asset Integrity Compliance", domainWeight: 0.25, score: card?.assetIntegrityScore ?? 82,   ragStatus: card?.assetIntegrityRag ?? "AMBER",   displayOrder: 3, indicators: [] },
-      { domainId: "RCD",  domainName: "Regulatory Compliance",      domainWeight: 0.20, score: card?.regulatoryScore ?? 84,       ragStatus: card?.regulatoryRag ?? "GREEN",       displayOrder: 4, indicators: [] },
-    ],
-  };
-}

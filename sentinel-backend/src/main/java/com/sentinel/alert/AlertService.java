@@ -94,6 +94,9 @@ public class AlertService {
                 .acknowledgedAt(entity.getAcknowledgedAt() != null
                         ? formatTimestamp(entity.getAcknowledgedAt()) : null)
                 .acknowledgedBy(entity.getAcknowledgedBy())
+                .narrative(entity.getNarrative())
+                .narrativeUpdatedAt(entity.getNarrativeUpdatedAt() != null
+                        ? formatTimestamp(entity.getNarrativeUpdatedAt()) : null)
                 .build();
     }
 

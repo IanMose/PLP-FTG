@@ -6,6 +6,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.sentinel.capa.QualificationMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -24,6 +25,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error("Bad Request", ex.getMessage()));
+    }
+
+    /** Technician does not hold required qualification */
+    @ExceptionHandler(QualificationMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleQualificationMismatch(QualificationMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error("Qualification Mismatch", ex.getMessage()));
     }
 
     /** Account suspended/deactivated */

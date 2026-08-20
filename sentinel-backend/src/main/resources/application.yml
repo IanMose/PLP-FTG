@@ -1,8 +1,12 @@
 spring:
+  profiles:
+    active: postgres
   application:
     name: sentinel-backend
 
-  # Default profile uses H2 for quick local dev
+  # Default profile — H2 in-memory for quick local dev.
+  # To run against local Postgres: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
+  # On Render, SPRING_PROFILES_ACTIVE=render is injected via render.yaml — no hardcoding needed.
   datasource:
     url: jdbc:h2:mem:sentinel;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver
@@ -11,23 +15,15 @@ spring:
 
   jpa:
     hibernate:
-      # create-drop: Hibernate creates the schema from @Entity classes on startup
-      # and drops it on shutdown. Flyway is not used for the H2 dev profile.
-      # Seed data is handled by DataSeeder (roles/users) and data-h2.sql (sites).
       ddl-auto: create-drop
     show-sql: false
     open-in-view: false
-    defer-datasource-initialization: true  # ensures JPA creates tables before data-h2.sql runs
 
-  # Flyway is disabled for H2 local dev — migrations use PostgreSQL syntax
-  # (ON CONFLICT) that H2 does not fully support. Schema is managed by JPA.
-  # Flyway remains enabled on the render profile (application-render.yml).
+  defer-datasource-initialization: true
+
   flyway:
     enabled: false
 
-  # Seed the 7 KPC sites after JPA creates the schema (create-drop).
-  # Spring runs data-h2.sql once per startup — safe because create-drop
-  # drops all tables on shutdown, so the inserts are always against a fresh schema.
   sql:
     init:
       mode: always
@@ -50,28 +46,35 @@ management:
     health:
       show-details: never
 
-# CORS configuration for frontend
 sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
     secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
-    expiration-ms: 86400000  # 24 hours
+    expiration-ms: 86400000 # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
-    # Path to the JSON written by sentinel/src/run_pipeline.py
-    # Adjust if your sentinel/ folder lives elsewhere relative to sentinel-backend/
     live-batch-path: ${ETL_LIVE_BATCH_PATH:../sentinel/data/warehouse/live_batch.json}
-    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel}   # root of the Python project (contains run_live.sh)
-    api-key: ${ETL_API_KEY:}
+    sentinel-dir: ${ETL_SENTINEL_DIR:../sentinel} # root of the Python project (contains run_live.sh)
 
     # ── Timing & volume ─────────────────────────────────────────────────────
-    poll-interval-ms: 120000         # 2 minutes
+    poll-interval-ms: 120000 # 2 minutes
     rows-per-cycle: 200
-    frontend-refresh-ms: 125000      # 2 min 5 s
+    frontend-refresh-ms: 125000 # 2 min 5 s
+
+  # ── LLM narrative enhancement (optional stretch goal) ─────────────────────
+  # Set GROQ_API_KEY env var to enable. If blank/missing, NarrativeService
+  # falls back to the templated narrative silently — no errors, no crashes.
+  # Get a free key at https://console.groq.com
+  llm:
+    groq-api-key: ${GROQ_API_KEY:}
+    model: llama-3.1-8b-instant
+    timeout-ms: 3000 # 3 second hard timeout — never block alert creation
+    enabled: ${LLM_ENABLED:true}
 
 ---
-# PostgreSQL profile (local dev with explicit postgres activation)
+# PostgreSQL profile — local dev only
+# Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
 spring:
   config:
     activate:
@@ -83,8 +86,22 @@ spring:
     username: sentinel
     password: sentinel
 
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+  defer-datasource-initialization: false
+
   flyway:
+    enabled: true
     locations: classpath:db/migration
+    baseline-on-migrate: true
+    out-of-order: true
+    validate-on-migrate: false
+
+  sql:
+    init:
+      mode: never
 
   h2:
     console:

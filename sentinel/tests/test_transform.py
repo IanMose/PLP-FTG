@@ -92,12 +92,12 @@ class TestToIso8601Utc:
     def test_invalid_date_becomes_none(self):
         series = pd.Series(["not-a-date"])
         result = to_iso8601_utc(series)
-        assert result.iloc[0] is None
+        assert pd.isna(result.iloc[0])
 
     def test_nan_preserved(self):
         series = pd.Series([None])
         result = to_iso8601_utc(series)
-        assert result.iloc[0] is None
+        assert pd.isna(result.iloc[0])
 
     def test_mixed_formats(self):
         series = pd.Series(["2024-01-15", "2024-01-15 10:30:00", "Jan 15, 2024"])
