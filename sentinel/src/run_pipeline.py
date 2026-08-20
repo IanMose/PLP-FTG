@@ -498,7 +498,7 @@ def _df_to_records(df: pd.DataFrame) -> list:
 
 def push_to_backend(export_path: Path, push_url: str, api_key: str, verbose: bool = True) -> bool:
     """
-    POST the live_batch.json payload to the Spring Boot backend's /api/etl/push endpoint.
+    POST the live_batch.json payload to the Spring Boot backend's /api/data/ingest endpoint.
 
     Returns True on success, False on failure.
     """
@@ -547,7 +547,7 @@ def main():
         "--push-url",
         default=os.environ.get("ETL_PUSH_URL", ""),
         help="If set, POST live_batch.json to this URL after the pipeline runs "
-             "(e.g. https://sentinel-backend.onrender.com/api/etl/push). "
+             "(e.g. https://plp-ftg.onrender.com/api/data/ingest). "
              "Can also be set via ETL_PUSH_URL env var.",
     )
     parser.add_argument(

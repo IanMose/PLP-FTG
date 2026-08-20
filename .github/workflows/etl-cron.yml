@@ -2,7 +2,7 @@ name: ETL Live Cron
 
 # Runs every 10 minutes and POSTs a fresh batch to the deployed backend.
 # Secrets required (set in GitHub → Settings → Secrets → Actions):
-#   ETL_PUSH_URL  — https://sentinel-backend.onrender.com/api/etl/push
+#   ETL_PUSH_URL  — https://plp-ftg.onrender.com/api/data/ingest
 #   ETL_API_KEY   — the same strong random value set in Render's ETL_API_KEY env var
 
 on:
