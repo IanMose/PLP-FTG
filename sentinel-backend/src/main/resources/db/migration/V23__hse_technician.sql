@@ -1,4 +1,4 @@
--- V15: Technician and qualification tables
+-- V23: Technician and qualification tables
 
 CREATE TABLE IF NOT EXISTS technician (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

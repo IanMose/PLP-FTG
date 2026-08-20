@@ -1,4 +1,4 @@
--- V16: Remove Compliance Intelligence Module tables
+-- V24: Remove Compliance Intelligence Module tables
 -- V12 and V13 are preserved for Flyway checksum tracking.
 -- This migration reverses the schema additions from V12.
 -- compliance_score column on fact_incidents and fact_audits is NOT touched

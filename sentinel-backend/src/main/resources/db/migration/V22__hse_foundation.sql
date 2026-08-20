@@ -1,5 +1,4 @@
--- V14: HSE Foundation — new roles, hazard_report, capa, required_qualification on alerts
--- Fixes the duplicate V11 narrative issue by consolidating in V14 if not already applied.
+-- V22: HSE Foundation — new roles, hazard_report, capa, required_qualification on alerts
 
 -- ── New roles ────────────────────────────────────────────────────────────────
 INSERT INTO app_role (name) VALUES ('Field Technician')  ON CONFLICT (name) DO NOTHING;
