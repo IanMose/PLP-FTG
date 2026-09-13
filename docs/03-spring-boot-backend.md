@@ -1,32 +1,38 @@
 # Sentinel — Spring Boot Backend API
 
-The backend (`sentinel-backend/`) is Stage 2 of the system. It is a Spring Boot
-REST API that reads clean data from the Python pipeline, evaluates alert rules on
-each incoming batch, computes risk scores, and exposes everything as JSON to the
-Next.js dashboard.
+The backend (`sentinel-backend/`) serves the Spring Boot REST API. It reads clean
+data from the Python pipeline, evaluates alert rules on each incoming batch,
+computes risk scores, manages the full HSE corrective-action lifecycle, and serves
+the ML HITL governance endpoints.
 
 ---
 
 ## Directory Layout
 
 ```
-sentinel-backend/
-├── src/main/java/com/sentinel/
-│   ├── SentinelApplication.java     # Entry point (@SpringBootApplication, @EnableScheduling)
-│   ├── alert/                       # Alert CRUD + rules engine
-│   ├── auth/                        # JWT login endpoint
-│   ├── common/                      # DTOs, JwtUtil, JwtAuthFilter, SecurityConfig
-│   ├── corridor/                    # Corridor heatmap + asset management
-│   ├── etl/                         # Python pipeline integration (polling + loader)
-│   ├── ingestion/                   # Ingest log entity + repository
-│   ├── quality/                     # Data quality summary endpoint
-│   ├── risk/                        # Per-site risk scoring + site detail
-│   ├── site/                        # Site, Incident, Audit entities + repositories
-│   ├── telemetry/                   # Pipeline telemetry endpoint
-│   └── user/                        # User management (admin-only)
-└── src/main/resources/
-    ├── application.yml
-    └── db/migration/                # V1 – V9 Flyway migrations
+sentinel-backend/src/main/java/com/sentinel/
+├── SentinelApplication.java
+├── alert/          — AlertController, AlertService, AlertRulesEngine (5 rules), NarrativeService
+├── analytics/      — AnalyticsController, AnalyticsService (serves pre-computed JSON)
+├── auth/           — AuthController, AuthService
+├── capa/           — CapaController, CapaService, CapaEntity, QualificationMismatchException
+├── common/         — DTOs, JwtUtil, JwtAuthFilter, SecurityConfig, GlobalExceptionHandler, DataSeeder
+├── corridor/       — CorridorController, CorridorHeatmapService, Asset, EnvironmentalReading
+├── etl/            — EtlReloadService (@Scheduled), EtlConfigController, LiveBatchRecord
+├── hazard/         — HazardReportController, HazardReportService, HazardReportEntity
+├── ingestion/      — IngestLogEntity, IngestLogRepository
+├── ml/             — MlAdminController, ModelFeedbackService, ModelRegistryService, MlWiringConfig
+├── prediction/     — PredictionService, PredictionEntity, PredictionRepository, PredictionDto
+├── quality/        — QualityController, QualityService
+├── risk/           — RiskController, RiskService (5-component transparent score)
+├── roi/            — RoiController
+├── site/           — SiteEntity, IncidentEntity, AuditEntity + repositories
+├── spi/            — SpiController, SpiService, SpiSummaryDto
+├── technician/     — TechnicianController, TechnicianService, TechnicianQualificationRepository
+├── telemetry/      — TelemetryController, TelemetryEntity
+└── user/           — UserController (admin-only), AppUserEntity, AppRoleEntity
+
+src/main/resources/db/migration/   — V1–V19 Flyway migrations
 ```
 
 ---
@@ -36,339 +42,399 @@ sentinel-backend/
 ```bash
 cd sentinel-backend
 
-# H2 in-memory (no external database needed)
+# H2 in-memory (no external database needed — default)
 ./mvnw spring-boot:run
 
 # PostgreSQL
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
 ```
 
-| URL | Purpose |
-|---|---|
-| `http://localhost:8080` | API base |
-| `http://localhost:8080/swagger-ui.html` | Swagger / OpenAPI explorer |
-| `http://localhost:8080/h2-console` | H2 console (dev profile only) |
-
-PostgreSQL defaults: URL `jdbc:postgresql://localhost:5432/sentinel`,
-user `sentinel`, password `sentinel`.
+| URL                                     | Purpose                       |
+| --------------------------------------- | ----------------------------- |
+| `http://localhost:8080`                 | API base                      |
+| `http://localhost:8080/swagger-ui.html` | Swagger / OpenAPI explorer    |
+| `http://localhost:8080/h2-console`      | H2 console (dev profile only) |
 
 ---
 
-## Packages
+## Package Reference
 
 ### `etl` — Python Pipeline Integration
 
-This is the bridge between the Python pipeline and the database.
-
 #### `EtlReloadService` (`@Service`, `@Scheduled`)
 
-**Auto-start on boot** (`@PostConstruct startEtlLoop()`):
-Launches `run_live.sh` as a background OS process via `ProcessBuilder`. Passes
-`ROWS` and `INTERVAL` as environment variables. Redirects stdout/stderr to
-`logs/etl.log`. If the Python project is not found, logs a warning and continues —
-the backend works without the live ETL for demo purposes.
+**On startup (`@PostConstruct`):** launches `run_live.sh` as a background OS process
+via `ProcessBuilder`. Passes `ROWS` and `INTERVAL` as env vars.
 
-**Scheduled polling** (`@Scheduled fixedDelay=120000, initialDelay=5000`):
-Reads `live_batch.json` every 2 minutes. Checks `batch_id` against
-`lastProcessedBatchId` to skip already-processed batches. Then:
+**Scheduled polling (`fixedDelay=120000, initialDelay=5000`):** reads `live_batch.json`
+every 2 minutes, checks `batch_id` against `lastProcessedBatchId`, then:
 
-1. Loads the set of known site IDs in one query (used for FK validation)
-2. `loadIncidents()` — runs in a `REQUIRES_NEW` transaction; batch-deduplicates
-   using a single `IN` query (`findExistingIds`) rather than N `existsById` calls
-3. `loadAudits()` — same pattern
-4. `loadEnvironmental()` — loads corridor readings; tolerates FK violations if
-   `dim_asset` doesn't yet know the asset
-5. Calls `AlertRulesEngine.evaluate()` with the newly saved incidents
+1. `loadIncidents()` — `REQUIRES_NEW` transaction, batch-deduplicates via single `IN` query
+2. `loadAudits()` — same pattern
+3. `loadEnvironmental()` — corridor readings
+4. `loadPredictions()` — upserts `fact_predictions` from `predictions_export.json`
+5. Calls `AlertRulesEngine.evaluate()` + `AlertRulesEngine.refreshStaleNarratives()`
 
-Site IDs from the Python ETL (`SITE-001`) are lowercased by `normaliseSiteId()`
-to match the DB primary keys (`site-001`).
-
-#### `EtlConfigController`
-
-`GET /api/config/etl` → returns `{frontendRefreshMs, pollIntervalMs, rowsPerCycle}`
-so the frontend can sync its refresh interval automatically.
-
-#### `LiveBatchRecord`
-
-Jackson DTO that maps the structure of `live_batch.json` for deserialization.
+`normaliseSiteId()` lowercases `SITE-001` → `site-001` before DB insert.
 
 ---
 
 ### `auth`
 
-#### `AuthController`
-
-`POST /api/auth/login` — accepts `{email, password}`, returns `{token, email, role, …}`.
-
-#### `AuthService`
-
-- Loads the user by email via `UserDetailsService`
-- Verifies the password with BCrypt
-- Updates `last_login_at`
-- Issues a JWT via `JwtUtil` (24-hour expiry)
+`POST /api/auth/login` → validates BCrypt password, updates `last_login_at`, returns
+`{ token, email, role, name, userId }`. JWT lifetime: 24 hours.
 
 ---
 
 ### `alert`
 
-#### `AlertController`
+#### `AlertRulesEngine` — 5 Rules
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/alerts` | All alerts ordered by `createdAt DESC` |
-| POST | `/api/alerts/{id}/ack` | Acknowledge an alert; sets `acknowledgedBy` from the JWT principal |
+| Rule                        | Trigger                                               | Severity                     |
+| --------------------------- | ----------------------------------------------------- | ---------------------------- |
+| `RULE_HIGH_REJECT_RATE`     | ≥10% rejected in one batch for a site                 | High                         |
+| `RULE_CRITICAL_CLUSTER`     | ≥2 Critical/High incidents same site in one batch     | Critical                     |
+| `RULE_CRITICAL_HIGH_RISK`   | Any single Critical incident at site-003 or site-006  | Critical                     |
+| `RULE_AUDIT_OVERDUE`        | High-risk site not audited in last 14 days            | High                         |
+| `HAZARD_REPORT_RISK_RATING` | Risk assessment yields rating ≥ 10 on a hazard report | High (≥10) or Critical (≥15) |
 
-#### `AlertService`
+Deduplication: `findFirstBySiteIdAndRuleAndStatus(…, "active")` — skips if an active
+alert already exists for the same site + rule. Returns the created alert ID so
+`HazardReportService` can link the hazard to the alert.
 
-- Loads a `siteNameCache` (`Map<siteId, siteName>`) on `@PostConstruct` — 7 rows, cached for the application lifetime
-- `acknowledgeAlert()` reads the authenticated username from `SecurityContextHolder` so the audit trail records the real user
+`refreshStaleNarratives()` re-generates narratives when incident counts grow by ≥5–10
+since the last narrative write, or audit days increase by ≥7.
 
-#### `AlertRulesEngine` (`@Service`)
+#### `NarrativeService`
 
-Called by `EtlReloadService` after every batch load. Evaluates 4 named rules:
+Builds rule-specific narrative paragraphs from live context (site activity, pressure
+spikes, audit gap, Kimeu framing). Optional Groq LLM enhancement (3s timeout, template
+fallback on any failure). Five narrative methods:
 
-| Rule constant | Trigger | Severity |
-|---|---|---|
-| `RULE_HIGH_REJECT_RATE` | ≥10% of a site's records rejected in one batch | High |
-| `RULE_CRITICAL_CLUSTER` | ≥2 Critical/High incidents for the same site in one batch | Critical |
-| `RULE_CRITICAL_HIGH_RISK` | Any single Critical incident at `site-003` or `site-006` | Critical |
-| `RULE_AUDIT_OVERDUE` | High-risk site not audited in the last 14 days | High |
+- `forHighRejectRate()`, `forCriticalCluster()`, `forCriticalHighRisk()`,
+  `forAuditOverdue()`, `forHazardRiskRating()`
 
-Deduplication: before persisting, checks `findFirstBySiteIdAndRuleAndStatus(…, "active")`.
-If an active alert for the same site + rule already exists, the new one is skipped.
-This prevents the same alert firing every 2 minutes.
-
-#### `AlertEntity`
-
-Maps the `alerts` table:
+#### `AlertEntity` columns
 
 ```
-id (PK), site_id (FK), severity, status (active/acknowledged/resolved),
-title, description, rule, record_ids (comma-separated incident/audit IDs),
-created_at, acknowledged_at, acknowledged_by
+id, site_id, severity, status, title, description, rule, record_ids,
+created_at, acknowledged_at, acknowledged_by,
+narrative (TEXT), narrative_updated_at, narrative_incident_count,
+required_qualification
+```
+
+`acknowledged_by` reads from `SecurityContextHolder.getContext().getAuthentication().getName()`
+— never a hardcoded stub.
+
+---
+
+### `hazard` — Hazard Report Module
+
+#### `HazardReportController`
+
+| Method | Path                                       | Auth                                                                   |
+| ------ | ------------------------------------------ | ---------------------------------------------------------------------- |
+| POST   | `/api/hazard-reports`                      | Any authenticated role                                                 |
+| GET    | `/api/hazard-reports`                      | HSE Manager, Auditor, Analyst, Station Manager, Field Technician (own) |
+| GET    | `/api/hazard-reports/{id}`                 | Same as list                                                           |
+| PATCH  | `/api/hazard-reports/{id}/risk-assessment` | HSE Manager, Auditor                                                   |
+
+#### `HazardReportService`
+
+- `createReport()` — saves with `status='open'`
+- `assessRisk(id, likelihood, severity, mitigationNote, assessorId)`:
+  - Validates 1–5 range
+  - Sets `risk_rating = likelihood × severity` (computed in service layer)
+  - `risk_rating ≥ 10` → calls `AlertRulesEngine.createHazardAlert()`
+  - On success: sets `linked_alert_id`, transitions status to `linked_to_alert`
+- `closeReport()` — sets `status='closed'` (called by `CapaService.close()`)
+
+#### `HazardReportEntity` columns
+
+```
+id (VARCHAR 36 PK), site_id, asset_id, category, description,
+severity_estimate, reporter_id, photo_url,
+likelihood_rating, severity_rating, risk_rating,
+mitigation_note, assessed_by, assessed_at, linked_alert_id,
+status (open|risk_assessed|linked_to_alert|closed), created_at
 ```
 
 ---
 
-### `risk`
+### `capa` — CAPA Lifecycle Module
 
-#### `RiskController`
+#### `CapaController`
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/sites/risk-summary` | Risk score + metadata for all 7 sites |
-| GET | `/api/sites/{siteId}` | Full detail for one site (incidents + audits + telemetry) |
+| Method | Path                     | Auth                                               |
+| ------ | ------------------------ | -------------------------------------------------- |
+| POST   | `/api/capas`             | HSE Manager, Auditor                               |
+| GET    | `/api/capas`             | All authenticated (Field Technician sees own only) |
+| GET    | `/api/capas/{id}`        | Same as list                                       |
+| PATCH  | `/api/capas/{id}/status` | All authenticated (role-scoped transitions)        |
 
-#### `RiskService`
+#### `CapaService`
 
-Computes a transparent, rule-weighted risk score (0–100) per site.
-No black-box model — every component is traceable to the pipeline data.
+`createCapa()` — enforces qualification guard: if the source alert has a
+`required_qualification`, checks `TechnicianQualificationRepository.existsValidQualification()`
+(non-expired match). Throws `QualificationMismatchException` (→ 400) on failure.
 
-**Five components:**
+`updateStatus(id, newStatus, evidence, actorId)` — allowed transitions:
 
-| Component | Weight | Formula |
-|---|---|---|
-| Incident frequency | 25% | `min(incidentCount × 7, 100)` |
-| Severity mix | 20% | `(rejected + review) / total decisions × 100` |
-| Audit recency | 15% | `min(daysSinceLastAudit × 4, 100)` |
-| Rejection rate | 20% | `min(rejectedRate × 300, 100)` |
-| Pressure spikes | 20% | `min(pressureSpikeCount × 20, 100)` |
+```
+open → in_progress → completed → verified → closed
+```
 
-**Severity bands:**
+On `closed`:
 
-| Score | Band |
-|---|---|
-| ≥ 75 | Critical |
-| ≥ 55 | High |
-| ≥ 30 | Medium |
-| < 30 | Low |
+- Sets `closed_at = now()`
+- Calls `ModelFeedbackService.recordCapaOutcome(capa)` — writes a `capa_outcome` feedback row
+- Calls `HazardReportService.closeReport()` for the linked hazard if present
 
-Canonical coordinates for the heatmap are stored in a hardcoded `SITE_COORDS`
-map (keys lowercase, matching DB PKs). Long-term the coordinates should move
-to `dim_site`, but are hardcoded for the current stage.
+`QualificationMismatchException` is handled by `GlobalExceptionHandler` → HTTP 400.
+
+---
+
+### `technician`
+
+#### `TechnicianController`
+
+| Method | Path                                                 | Auth                 |
+| ------ | ---------------------------------------------------- | -------------------- |
+| GET    | `/api/technicians`                                   | HSE Manager, Auditor |
+| GET    | `/api/technicians/eligible?qualification=Mechanical` | HSE Manager, Auditor |
+
+`TechnicianQualificationRepository.existsValidQualification(userId, qualType, today)` —
+JPQL query checking `expiresAt IS NULL OR expiresAt > :today`.
+
+---
+
+### `spi` — Safety Performance Indicators
+
+`GET /api/analytics/spi` → `SpiSummaryDto`:
+
+```json
+{
+  "hazardReportsThisMonth": 4,
+  "avgCapaClosureDays": 3.2,
+  "pctCapasClosedOnTime": 83.0,
+  "overdueCapas": 1,
+  "hazardReportTrend": [{"month": "Jun 2026", "count": 2}, ...],
+  "incidents30d": 24,
+  "highCriticalIncidents30d": 0
+}
+```
+
+Leading indicators (hazard reports, CAPA closure metrics) are computed by SQL
+aggregation over `hazard_report` and `capa` tables — no Python needed.
+
+---
+
+### `roi` — ROI Calculator
+
+#### `RoiController`
+
+| Method | Path                                 | Auth             |
+| ------ | ------------------------------------ | ---------------- |
+| GET    | `/api/analytics/roi/reference-cases` | None (permitAll) |
+| POST   | `/api/analytics/roi/calculate`       | None (permitAll) |
+
+`GET /api/analytics/roi/reference-cases` — reads `thange_kimeu_2025.json` from
+`data/reference/` (via `AnalyticsService`). Returns reference case + default
+assumptions table. If file not found, returns a hard-coded fallback with the court
+record values.
+
+`POST /api/analytics/roi/calculate` — reads `roi_simulation_result.json` for
+`lead_time_days`, applies the formula server-side:
+
+```
+expected_avoided = intervention_probability × incident_exposure_kes × n_high_risk_alerts
+net_benefit = expected_avoided - annual_platform_cost (if provided)
+roi_pct = net_benefit / annual_platform_cost × 100 (if provided)
+```
+
+Returns full `breakdown` map + mandatory `disclaimer` string. Does **not** call Python
+at runtime — all calculation is Java, lead time is pre-computed.
+
+**Enforced constraints:**
+
+- `gross_award_kes` (3,018,831,676) is never fed into any formula — display only
+- `lead_time_days` is always read from the simulation file — never hardcoded
+
+---
+
+### `ml` — ML HITL Governance
+
+#### `MlAdminController` — All endpoints require `ML_ADMIN` or `ADMIN` role
+
+| Method | Path                                  | Description                                                            |
+| ------ | ------------------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/api/ml/champion-artifact-path`      | `permitAll` — returns `{artifactPath}` for `predict.py`                |
+| GET    | `/api/ml/overview`                    | Champion + challenger + last 5 versions                                |
+| GET    | `/api/ml/model-registry`              | All versions ordered by `trained_at DESC`                              |
+| GET    | `/api/ml/training-runs`               | All retrain history                                                    |
+| GET    | `/api/ml/feedback`                    | Paged list of `model_feedback` rows                                    |
+| GET    | `/api/ml/predictions-for-review`      | `fact_predictions` sorted by `ABS(probability - 0.5) ASC`              |
+| POST   | `/api/ml/feedback`                    | Save one `ModelFeedbackEntity` (source=`human_review`)                 |
+| POST   | `/api/ml/training-run`                | Save `ModelRegistryEntity` (status=`challenger`) + `TrainingRunEntity` |
+| PATCH  | `/api/ml/model-registry/{id}/promote` | Champion swap (transactional)                                          |
+| PATCH  | `/api/ml/model-registry/{id}/reject`  | Mark rejected + optional notes                                         |
+
+#### `ModelFeedbackService`
+
+`recordCapaOutcome(capa)` — called from `CapaService.close()` via `MlWiringConfig`
+setter injection (breaks the circular dependency):
+
+```java
+// MlWiringConfig.wire() called @PostConstruct
+capaService.setModelFeedbackService(modelFeedbackService);
+```
+
+Derives `site_id` from `source_alert_id` or `source_hazard_id` FK chain. Sets
+`source='capa_outcome'`, `rating='accurate'`.
+
+#### `ModelRegistryService.promote()` — `@Transactional`
+
+```java
+// 1. Verify challenger exists and status == 'challenger'
+// 2. Archive all current champions (findByStatus("champion"))
+// 3. Set challenger.status = 'champion', approved_by, approved_at
+// Both saves in one transaction — never two simultaneous champions
+```
+
+---
+
+### `analytics` — Diagnostic Artifacts
+
+All analytics endpoints read pre-computed JSON from `sentinel/data/warehouse/`
+via `AnalyticsService.readJson(filename)`. Returns 503 if file not yet generated.
+
+| Endpoint                             | File served                                         |
+| ------------------------------------ | --------------------------------------------------- |
+| `/api/analytics/survival-curves`     | `survival_curve_data.json`                          |
+| `/api/analytics/pressure-charts`     | `control_chart_data.json`                           |
+| `/api/analytics/correlation`         | `correlation_data.json`                             |
+| `/api/analytics/feature-importance`  | `feature_importance.json`                           |
+| `/api/analytics/roi/reference-cases` | `data/reference/thange_kimeu_2025.json`             |
+| `/api/analytics/roi/calculate`       | reads `roi_simulation_result.json`, applies formula |
+| `/api/analytics/spi`                 | computed from DB (not a file)                       |
+
+---
+
+### `risk` — Risk Scoring
+
+`RiskService.computeRiskScore()` — transparent, 5-component rule-weighted score (0–100):
+
+| Component          | Weight | Formula                                 |
+| ------------------ | ------ | --------------------------------------- |
+| Incident frequency | 30%    | `min(incidentCount / 2.0, 100)`         |
+| Severity mix       | 30%    | `(critHighCount / incidentCount) × 100` |
+| Audit recency      | 20%    | `min(daysSinceAudit / 1.8, 100)`        |
+| Rejection rate     | 10%    | `min(rejectedRate × 500, 100)`          |
+| Pressure spikes    | 10%    | `min(spikeCount × 10, 100)`             |
+
+Bands: ≥75 Critical · ≥55 High · ≥30 Medium · <30 Low
+
+`SITE_COORDS` map uses **lowercase keys** (`"site-001"` not `"SITE-001"`).
+
+`SiteRiskSummaryDto` includes `incidentProbability7d` and `modelRiskBand` from
+`PredictionService.getProbabilityBySite()`.
 
 ---
 
 ### `corridor`
 
-#### `CorridorController`
+`CorridorHeatmapService` computes normalized weight (0–1) per asset:
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/corridor/risk-heatmap` | Weight (0–1) + band per corridor asset (176 points) |
-| GET | `/api/corridor/assets` | All `dim_asset` rows |
-
-#### `CorridorHeatmapService`
-
-Computes a normalized weight (0.0–1.0) per asset from three components:
-
-| Component | Weight | Source |
-|---|---|---|
-| Flood/landslide zone | 40% | `dim_asset.flood_landslide_risk_zone` |
-| Live environmental status | 40% | Latest `fact_environmental.status` per asset |
-| Nearest site risk | 20% | `RiskService` score / 100 for linked site; 0 if none |
-
-**Flood zone scores:** `high_flood`=1.0, `moderate_flood`=0.55, `low`=0.15
-
-**Status scores:** `critical`=1.0, `warning`=0.70, `advisory`=0.40, `normal`=0.10
-
-**Performance:** uses a single `findLatestPerAsset()` bulk query that returns
-one row per asset. This replaces the previous ~160 per-asset queries that
-fired on every heatmap request.
-
-#### `Asset`
-
-Maps `dim_asset`: assetId, assetType (`monitoring_point` / `pump_station` / `depot`),
-nearestSiteCode (FK→`dim_site`), segment, chainageKmApprox, latitude, longitude,
-floodLandslideRiskZone, sensorSuite.
-
-#### `EnvironmentalReading`
-
-Maps `fact_environmental`: readingId, assetId, readingTimestamp, pressurePsi,
-flowRateBph, temperatureCelsius, rainfallMm, status.
+- Flood zone: 40% | Live environmental status: 40% | Nearest-site risk: 20%
+- Single `findLatestPerAsset()` bulk query — no per-asset round trips
 
 ---
 
 ### `quality`
 
-#### `QualityController`
+`GET /api/quality/summary` → `{ trusted, corrected, review, rejected, passRate, gateStatus, lastBatchId, lastBatchDate }`
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/quality/summary` | Trusted/corrected/review/rejected counts, pass rate, gate status |
-| GET | `/api/quality/batches` | Ingest batch history with checksums and decision counts |
-
-`DataQualitySummaryDto` includes:
-- `trusted`, `corrected`, `review`, `rejected` record counts
-- `passRate` (trusted + corrected / total)
-- `gateStatus` (`"passed"` if passRate ≥ 0.90, otherwise `"failed"`)
-- `lastBatchId`, `lastBatchDate`
+`passRate` = (trusted + corrected) / total. `gateStatus` = `"passed"` if ≥ 0.90.
 
 ---
 
-### `telemetry`
+## Security Configuration
 
-#### `TelemetryController`
+`JwtAuthFilter` sets authority as `"ROLE_" + roleName.toUpperCase().replace(" ","_")`:
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/telemetry/summary` | Aggregate stats across all telemetry |
-| GET | `/api/telemetry/site/{siteId}` | Latest readings for one site |
+- `"Admin"` → `ROLE_ADMIN`
+- `"HSE Manager"` → `ROLE_HSE_MANAGER`
+- `"Field Technician"` → `ROLE_FIELD_TECHNICIAN`
 
-`TelemetrySummaryDto`: totalReadings, pressureSpikeCount (readings >1000 PSI),
-sensorDropoutCount, avgPressure, avgFlow, avgTemp.
-
-#### `TelemetryEntity`
-
-Maps `fact_telemetry`: readingId, timestamp, site, pipelineSection, pressurePsi,
-flowRateBph, temperatureCelsius, valveStatus, sensorId.
-
----
-
-### `user`
-
-All endpoints require `ROLE_ADMIN`.
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/users` | List all users |
-| POST | `/api/users` | Create user |
-| PATCH | `/api/users/{id}/status` | Enable / disable account |
-| DELETE | `/api/users/{id}` | Remove user |
-| GET | `/api/users/roles` | Available roles |
-
----
-
-### `ingestion`
-
-#### `IngestLogEntity`
-
-Maps `ingest_log`: id (IDENTITY PK), batchId (UNIQUE), sourceFilename, rowCount,
-sha256Checksum, ingestionTimestamp, trustedCount, correctedCount, reviewCount, rejectedCount.
-
-This table is the audit trail for every batch the Python pipeline has ever run.
-
----
-
-### `common` — Security & DTOs
-
-#### `JwtUtil`
-
-- Generates JWT tokens with configurable secret and expiry (default 24 h)
-- Validates tokens and extracts claims
-
-#### `JwtAuthFilter` (`OncePerRequestFilter`)
-
-Reads the `Authorization: Bearer` header on every request, validates the token,
-and sets the authenticated principal in `SecurityContextHolder`.
-
-#### `SecurityConfig`
-
-Stateless JWT security. CORS allows `localhost:3000` and `localhost:3001`.
-
-**Public endpoints** (no token required):
+`SecurityConfig` permission matrix:
 
 ```
-POST  /api/auth/**
-GET   /api/alerts
-GET   /api/sites/**
-GET   /api/corridor/**
-GET   /api/quality/**
-GET   /api/telemetry/**
-GET   /api/config/**
+permitAll:
+  /api/auth/**
+  /api/alerts (GET)
+  /api/sites/**
+  /api/corridor/**
+  /api/quality/**
+  /api/telemetry/**
+  /api/config/**
+  /api/analytics/**          (includes roi, spi)
+  /api/ml/champion-artifact-path
+
+authenticated (any JWT):
+  POST /api/alerts/{id}/ack
+  POST /api/hazard-reports
+  GET/PATCH /api/hazard-reports/**
+  GET/PATCH /api/capas/**
+  POST /api/capas (HSE_MANAGER, AUDITOR only)
+
+role-gated:
+  /api/technicians/**        → HSE_MANAGER, AUDITOR
+  /api/ml/**                 → ML_ADMIN, ADMIN
+  /api/users/**              → ADMIN
+  /api/roles/**              → ADMIN
 ```
-
-**Admin-only:** `/api/users/**`
-
----
-
-## Key API Endpoints Summary
-
-| Endpoint | Method | Auth | Description |
-|---|---|---|---|
-| `/api/auth/login` | POST | None | Get JWT token |
-| `/api/sites/risk-summary` | GET | None | All-site risk scores + map coordinates |
-| `/api/sites/{siteId}` | GET | None | Site detail: incidents, audits, telemetry |
-| `/api/alerts` | GET | None | Alert feed ordered by creation date |
-| `/api/alerts/{id}/ack` | POST | Required | Acknowledge an alert |
-| `/api/corridor/risk-heatmap` | GET | None | 176 corridor asset heat weights |
-| `/api/corridor/assets` | GET | None | Raw corridor asset list |
-| `/api/quality/summary` | GET | None | DQ pass rate + gate status |
-| `/api/quality/batches` | GET | None | Per-batch ingest history |
-| `/api/telemetry/summary` | GET | None | Aggregate telemetry stats |
-| `/api/telemetry/site/{siteId}` | GET | None | Site-level sensor readings |
-| `/api/config/etl` | GET | None | Frontend polling config |
-| `/api/users` | GET/POST | Admin | User management |
 
 ---
 
 ## Database Migrations
 
-| Migration | Contents |
-|---|---|
-| V1 | Core tables: `dim_site`, `fact_incidents`, `fact_audits`, `ingest_log`, `alerts` |
-| V2 | KPC domain seed: 7 sites, sample incidents/audits, 7 seeded alerts, 5 ingest batches |
-| V3 | User tables: `app_role`, `app_user` |
-| V4 | Default user accounts (5 roles, BCrypt-hashed passwords) |
-| V5 | Schema corrections |
-| V6 | Corridor tables: `dim_asset` (176 assets), `fact_environmental` |
-| V7 | Missing pump stations added to `dim_asset` |
-| V8 | `reading_id` column widened to `VARCHAR` |
-| V9 | Kisumu site (`site-007`) added to `dim_site` |
+| Migration | Key content                                                                                                                         |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| V1        | Core tables: `dim_site`, `fact_incidents`, `fact_audits`, `ingest_log`, `alerts`                                                    |
+| V2        | KPC domain seed: 7 sites, incidents, audits, 7 alerts, 5 ingest batches                                                             |
+| V3        | `app_role`, `app_user`                                                                                                              |
+| V4        | Default user accounts (5 roles, BCrypt)                                                                                             |
+| V5        | Schema corrections                                                                                                                  |
+| V6        | `dim_asset` (176), `fact_environmental`                                                                                             |
+| V7        | Missing pump stations                                                                                                               |
+| V8        | `reading_id` widened to VARCHAR                                                                                                     |
+| V9        | `site-007` (Kisumu) added                                                                                                           |
+| V10       | `fact_predictions` (id BIGINT, site_id, as_of_date, probability, model_version, top_features)                                       |
+| V11       | `narrative TEXT` added to `alerts` (two V11 files exist — see note)                                                                 |
+| V12       | `narrative_updated_at` backfilled from `created_at`                                                                                 |
+| V13       | `narrative_incident_count BIGINT` added to `alerts`                                                                                 |
+| V14       | New roles (Field Technician, Station Manager, Maintenance Team, ML Admin); `hazard_report`; `capa`; `alerts.required_qualification` |
+| V15       | `technician`; `technician_qualification`                                                                                            |
+| V16       | `model_feedback`; `model_registry`; `training_run`; champion seed row for logreg_v1                                                 |
+
+**Note on V11 conflict:** two V11 files exist (`V11__add_alert_narrative.sql` and
+`V11__fact_predictions.sql`). On a clean deploy, rename the narrative file to
+`V14__add_alert_narrative_fix.sql` if Flyway rejects the duplicate.
 
 ---
 
 ## Configuration (`application.yml`)
 
-Key properties under `sentinel.*`:
-
-| Property | Default | Description |
-|---|---|---|
-| `sentinel.etl.enabled` | `true` | Whether to auto-launch the Python ETL on startup |
-| `sentinel.etl.live-batch-path` | `../sentinel/data/warehouse/live_batch.json` | Path to JSON bridge file |
-| `sentinel.etl.sentinel-dir` | `../sentinel` | Root of the Python project |
-| `sentinel.etl.poll-interval-ms` | `120000` | How often to poll `live_batch.json` (ms) |
-| `sentinel.etl.rows-per-cycle` | `200` | Synthetic rows per Python ETL run |
-| `sentinel.etl.frontend-refresh-ms` | `125000` | Passed to frontend for `router.refresh()` timing |
-| `sentinel.jwt.expiration-ms` | `86400000` | JWT lifetime (24 h) |
-| `sentinel.cors.allowed-origins` | `localhost:3000,3001` | CORS allowed origins |
+| Property                           | Default                                      | Description                                            |
+| ---------------------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| `sentinel.etl.enabled`             | `true`                                       | Auto-launch Python ETL on startup                      |
+| `sentinel.etl.live-batch-path`     | `../sentinel/data/warehouse/live_batch.json` | JSON bridge file                                       |
+| `sentinel.etl.sentinel-dir`        | `../sentinel`                                | Python project root (used by AnalyticsService)         |
+| `sentinel.etl.poll-interval-ms`    | `120000`                                     | Polling interval                                       |
+| `sentinel.etl.rows-per-cycle`      | `200`                                        | Synthetic rows per ETL run                             |
+| `sentinel.etl.frontend-refresh-ms` | `125000`                                     | Passed to frontend for auto-refresh timing             |
+| `sentinel.jwt.expiration-ms`       | `86400000`                                   | JWT lifetime (24 h)                                    |
+| `sentinel.cors.allowed-origins`    | `localhost:3000,3001`                        | CORS allowed origins                                   |
+| `sentinel.llm.groq-api-key`        | `""`                                         | Groq API key (blank = LLM disabled, template fallback) |
+| `sentinel.llm.enabled`             | `true`                                       | Enable/disable LLM narrative enhancement               |
+| `sentinel.llm.timeout-ms`          | `3000`                                       | Max wait for Groq API before fallback                  |

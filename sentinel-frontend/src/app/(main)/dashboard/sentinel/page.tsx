@@ -7,14 +7,28 @@ import { ConfidenceGauge } from "./_components/confidence-gauge";
 import { DataQualityPanel } from "./_components/data-quality-panel";
 import { RiskHeatmap } from "./_components/risk-heatmap";
 import { SentinelKpiStrip } from "./_components/sentinel-kpi-strip";
+import { SpiPanel } from "./_components/spi-panel";
+
+const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
+
+async function fetchSpi() {
+  try {
+    const res = await fetch(`${API_BASE}/api/analytics/spi`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
 export default async function Page() {
   try {
-    const [sites, alerts, quality, batches] = await Promise.all([
+    const [sites, alerts, quality, batches, spi] = await Promise.all([
       fetchRiskSummary(),
       fetchAlerts(),
       fetchQualitySummary(),
       fetchBatches(),
+      fetchSpi(),
     ]);
 
     return (
@@ -27,6 +41,8 @@ export default async function Page() {
         </div>
 
         <SentinelKpiStrip sites={sites} alerts={alerts} quality={quality} />
+
+        <SpiPanel spi={spi} />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
           <div className="flex flex-col gap-4 md:col-span-7 xl:col-span-8">

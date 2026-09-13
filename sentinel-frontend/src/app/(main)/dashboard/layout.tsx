@@ -15,6 +15,8 @@ import { NotificationBell } from "./_components/sidebar/notification-bell";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
 import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
 import { DashboardAutoRefresh } from "./_components/dashboard-auto-refresh";
+import { SentinelAlertSound } from "./_components/sentinel-alert-sound";
+import { AlertSoundToggle } from "./_components/alert-sound-toggle";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
@@ -64,6 +66,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
             <div className="flex items-center gap-2">
               <LayoutControls />
               <ThemeSwitcher />
+              <AlertSoundToggle />
               <NotificationBell alerts={alerts} />
             </div>
           </div>
@@ -71,6 +74,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
         {/* Pages can set data-content-padding="false" to render full-bleed app layouts. */}
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden p-4 has-data-[content-padding=false]:p-0 md:p-6 md:has-data-[content-padding=false]:p-0">
           <DashboardAutoRefresh />
+          <SentinelAlertSound />
           {children}
         </div>
       </SidebarInset>
