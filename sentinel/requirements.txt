@@ -10,3 +10,4 @@ joblib>=1.4
 lifelines>=0.29
 scipy>=1.14
 shap>=0.44
+xgboost>=2.0

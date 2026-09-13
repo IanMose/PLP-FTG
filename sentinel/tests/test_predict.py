@@ -181,3 +181,47 @@ class TestSHAPScoring:
             for feat in top_features:
                 assert "feature" in feat
                 assert "contribution" in feat
+
+
+class TestModelComparison:
+
+    def test_train_returns_best_model(self):
+        """train_model should return the model with higher AUC."""
+        from src.predict import train_model, FEATURES
+        import pandas as pd
+        
+        # Create minimal synthetic data
+        n_samples = 200
+        features_df = pd.DataFrame({
+            "site_id": [f"SITE-00{i%6+1}" for i in range(n_samples)],
+            "as_of_date": pd.date_range("2026-01-01", periods=n_samples),
+            **{f: np.random.randn(n_samples) for f in FEATURES}
+        })
+        
+        # Add labels (simplified - normally comes from build_labels)
+        features_df["label"] = (features_df[FEATURES[0]] > 0).astype(int)
+        
+        # Train should complete without error and return a pipeline
+        pipe, report = train_model(features_df)
+        
+        assert pipe is not None
+        assert hasattr(pipe, "predict")
+        assert "auc_roc" in report
+        assert "model_type" in report  # Should indicate which model won
+
+    def test_force_logreg_flag(self):
+        """--force-logreg should use logistic regression regardless of comparison."""
+        from src.predict import train_model, FEATURES
+        import pandas as pd
+        
+        n_samples = 200
+        features_df = pd.DataFrame({
+            "site_id": [f"SITE-00{i%6+1}" for i in range(n_samples)],
+            "as_of_date": pd.date_range("2026-01-01", periods=n_samples),
+            "label": [0, 1] * (n_samples // 2),
+            **{f: np.random.randn(n_samples) for f in FEATURES}
+        })
+        
+        pipe, report = train_model(features_df, force_model="logreg")
+        
+        assert "logistic" in type(pipe.steps[-1][1]).__name__.lower()

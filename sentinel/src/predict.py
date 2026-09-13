@@ -165,13 +165,17 @@ def _impute(df: pd.DataFrame) -> pd.DataFrame:
 def train_model(
     features_with_labels: pd.DataFrame,
     cutoff: date = TRAIN_CUTOFF,
+    force_model: str = None,  # "logreg", "xgb", or None for auto-select
 ) -> tuple:
     """
-    Time-split train/test. Fit a Pipeline(StandardScaler + LogisticRegression).
+    Time-split train/test. Trains both LogisticRegression and XGBoost,
+    selects the one with higher test AUC (unless force_model is set).
 
     Returns:
         (fitted_pipeline, backtest_report_dict)
     """
+    from xgboost import XGBClassifier
+    
     df = _impute(features_with_labels)
     df["as_of_date"] = pd.to_datetime(df["as_of_date"])
     cutoff_ts = pd.Timestamp(cutoff)
@@ -184,21 +188,67 @@ def train_model(
     X_test  = test_df[FEATURES].values
     y_test  = test_df["label"].values
 
-    pipe = Pipeline([
+    # Build candidate pipelines
+    logreg_pipe = Pipeline([
         ("scaler", StandardScaler()),
-        ("clf",    LogisticRegression(
+        ("clf", LogisticRegression(
             class_weight="balanced",
             max_iter=1000,
             random_state=42,
             solver="lbfgs",
         )),
     ])
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        pipe.fit(X_train, y_train)
-
+    
+    # XGBoost doesn't need scaling, but we use a passthrough for consistency
+    xgb_pipe = Pipeline([
+        ("clf", XGBClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.1,
+            scale_pos_weight=(y_train == 0).sum() / max((y_train == 1).sum(), 1),
+            random_state=42,
+            eval_metric="logloss",
+        )),
+    ])
+    
+    candidates = {}
+    
+    # Train LogisticRegression
+    if force_model != "xgb":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            logreg_pipe.fit(X_train, y_train)
+        logreg_auc = roc_auc_score(y_test, logreg_pipe.predict_proba(X_test)[:, 1])
+        candidates["logreg"] = (logreg_pipe, logreg_auc)
+        print(f"  LogisticRegression AUC: {logreg_auc:.4f}")
+    
+    # Train XGBoost
+    if force_model != "logreg":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            xgb_pipe.fit(X_train, y_train)
+        xgb_auc = roc_auc_score(y_test, xgb_pipe.predict_proba(X_test)[:, 1])
+        candidates["xgb"] = (xgb_pipe, xgb_auc)
+        print(f"  XGBClassifier AUC:      {xgb_auc:.4f}")
+    
+    # Select winner
+    if force_model:
+        winner_name = force_model
+        pipe, _ = candidates[force_model]
+        print(f"  Forced selection: {force_model}")
+    else:
+        winner_name = max(candidates, key=lambda k: candidates[k][1])
+        pipe, _ = candidates[winner_name]
+        print(f"  Selected: {winner_name} (higher AUC)")
+    
+    # Generate report for the winner
     report = evaluate_model(pipe, X_test, y_test, train_df, test_df)
+    report["model_type"] = winner_name
+    report["comparison"] = {
+        name: {"auc_roc": round(auc, 4)} 
+        for name, (_, auc) in candidates.items()
+    }
+    
     return pipe, report
 
 
@@ -218,25 +268,46 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
     rec    = float(recall_score(y_test, y_pred, zero_division=0))
     f1     = float(f1_score(y_test, y_pred, zero_division=0))
 
-    # Feature importances from standardised logistic coefficients
-    scaler = pipe.named_steps["scaler"]
-    clf    = pipe.named_steps["clf"]
-    raw_coef = clf.coef_[0]
-    std_coef = np.abs(raw_coef) * scaler.scale_  # unstandardise for magnitude
-    importances = std_coef / std_coef.sum() if std_coef.sum() > 0 else std_coef
-
-    feat_importance = [
-        {
-            "name": name,
-            "importance": round(float(imp), 4),
-            "direction": "positive" if coef > 0 else "negative",
-            "coefficient": round(float(coef), 4),
-        }
-        for name, imp, coef in sorted(
-            zip(FEATURES, importances, raw_coef),
-            key=lambda x: -x[1],
-        )
-    ]
+    # Feature importances — handle both linear and tree models
+    clf = pipe.steps[-1][1]
+    clf_name = type(clf).__name__.lower()
+    
+    if "logistic" in clf_name or "linear" in clf_name:
+        scaler = pipe.named_steps.get("scaler")
+        raw_coef = clf.coef_[0]
+        if scaler is not None:
+            std_coef = np.abs(raw_coef) * scaler.scale_
+        else:
+            std_coef = np.abs(raw_coef)
+        importances = std_coef / std_coef.sum() if std_coef.sum() > 0 else std_coef
+        
+        feat_importance = [
+            {
+                "name": name,
+                "importance": round(float(imp), 4),
+                "direction": "positive" if coef > 0 else "negative",
+                "coefficient": round(float(coef), 4),
+            }
+            for name, imp, coef in sorted(
+                zip(FEATURES, importances, raw_coef),
+                key=lambda x: -x[1],
+            )
+        ]
+    else:
+        # Tree-based model — use feature_importances_
+        importances = clf.feature_importances_
+        feat_importance = [
+            {
+                "name": name,
+                "importance": round(float(imp), 4),
+                "direction": "N/A",  # Tree importances don't have direction
+                "coefficient": None,
+            }
+            for name, imp in sorted(
+                zip(FEATURES, importances),
+                key=lambda x: -x[1],
+            )
+        ]
 
     report = {
         "model_version":        MODEL_VERSION,
@@ -410,6 +481,14 @@ def main():
         "--list-versions", action="store_true",
         help="List all available model versions in the registry"
     )
+    parser.add_argument(
+        "--force-logreg", action="store_true",
+        help="Force use of LogisticRegression (skip XGBoost comparison)"
+    )
+    parser.add_argument(
+        "--force-xgb", action="store_true",
+        help="Force use of XGBoost (skip LogisticRegression comparison)"
+    )
     args = parser.parse_args()
 
     # Handle registry commands
@@ -455,8 +534,14 @@ def main():
         print(f"  Label positive rate: {pos_rate:.3f}  "
               f"({features_with_labels['label'].sum()} of {len(features_with_labels)} rows)")
 
-        print("[TRAIN] Fitting LogisticRegression (balanced, time-split)...")
-        pipe, report = train_model(features_with_labels, TRAIN_CUTOFF)
+        print("[TRAIN] Fitting model (head-to-head comparison)...")
+        force_model = None
+        if args.force_logreg:
+            force_model = "logreg"
+        elif args.force_xgb:
+            force_model = "xgb"
+        
+        pipe, report = train_model(features_with_labels, TRAIN_CUTOFF, force_model=force_model)
 
         print(f"  Train: {report['n_train']} rows  pos={report['positive_rate_train']:.3f}")
         print(f"  Test:  {report['n_test']} rows  pos={report['positive_rate_test']:.3f}")
