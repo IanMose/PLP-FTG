@@ -117,9 +117,11 @@ class TestModelRegistryLoad:
 
 class TestModelRegistryMetadata:
 
-    def test_list_versions(self, temp_registry, mock_pipeline, mock_report):
+    def test_list_versions(self, temp_registry, mock_pipeline, mock_report, monkeypatch):
         """list_versions() should return all saved versions."""
+        import time
         v1 = temp_registry.save(mock_pipeline, mock_report)
+        time.sleep(1.1)  # Ensure different timestamp
         mock_report["auc_roc"] = 0.80
         v2 = temp_registry.save(mock_pipeline, mock_report)
         

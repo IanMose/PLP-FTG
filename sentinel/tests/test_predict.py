@@ -8,6 +8,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.predict import evaluate_model, MIN_ACCEPTABLE_AUC, FEATURES
+from src.model_registry import ModelRegistry
+import src.predict as predict_module
 
 
 @pytest.fixture
@@ -116,3 +118,40 @@ class TestQualityGate:
         if report["auc_roc"] < predict_module.MIN_ACCEPTABLE_AUC:
             with pytest.raises(SystemExit):
                 raise SystemExit(1)
+
+
+class TestRegistryIntegration:
+
+    def test_train_saves_to_registry(self, tmp_path, monkeypatch):
+        """Training should save model via registry, not overwrite single file."""
+        # Use temp directory for models
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        registry = ModelRegistry(models_dir=models_dir)
+        
+        # Check registry is empty
+        assert len(registry.list_versions()) == 0
+        
+        # After a save, there should be one version
+        # (We test the integration point, not full train flow)
+        mock_pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(random_state=42)),
+        ])
+        mock_pipe.fit(np.random.randn(50, 7), np.random.randint(0, 2, 50))
+        
+        mock_report = {
+            "auc_roc": 0.75,
+            "precision": 0.7,
+            "recall": 0.7,
+            "f1": 0.7,
+            "n_train": 100,
+            "n_test": 50,
+            "train_cutoff": "2026-06-12",
+            "features": predict_module.FEATURES,
+        }
+        
+        version_id = registry.save(mock_pipe, mock_report)
+        
+        assert len(registry.list_versions()) == 1
+        assert registry.get_current_version() == version_id

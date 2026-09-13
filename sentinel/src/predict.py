@@ -48,6 +48,8 @@ from sklearn.metrics import classification_report, f1_score, precision_score, re
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
+from src.model_registry import ModelRegistry
+
 # ── Config ───────────────────────────────────────────────────────────────────
 FEATURES = [
     "days_since_last_audit",
@@ -75,6 +77,9 @@ TRAIN_CUTOFF = date(2026, 6, 12)
 # Quality gate — model must exceed this AUC to be saved
 # Set conservatively below current baseline to catch regressions, not block incremental work
 MIN_ACCEPTABLE_AUC = 0.55
+
+# Registry for versioned model persistence
+_registry = ModelRegistry(models_dir=Path("models"))
 
 RAW_DIR = Path("data/raw")
 WAREHOUSE_DIR = Path("data/warehouse")
@@ -256,15 +261,47 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-def save_model(pipe, path: Path = MODEL_PATH):
+def save_model(pipe, report: dict, path: Path = MODEL_PATH) -> str:
+    """
+    Save model to the registry (versioned) and also to the legacy path for
+    backward compatibility.
+    
+    Returns the version_id of the saved model.
+    """
+    # Save to versioned registry
+    version_id = _registry.save(pipe, report)
+    
+    # Also save to legacy path for backward compatibility
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipe, path)
+    
+    return version_id
 
 
-def load_model(path: Path = MODEL_PATH):
+def load_model(path: Path = MODEL_PATH, version_id: str = None):
+    """
+    Load model from registry (preferred) or legacy path (fallback).
+    
+    Args:
+        path: Legacy path (used if version_id is None and registry has no current)
+        version_id: Specific version to load (optional)
+    
+    Returns:
+        Fitted sklearn Pipeline
+    """
+    if version_id is not None:
+        return _registry.load(version_id)
+    
+    # Try registry first
+    try:
+        return _registry.load_current()
+    except FileNotFoundError:
+        pass
+    
+    # Fall back to legacy path
     if not path.exists():
         raise FileNotFoundError(
-            f"Model artifact not found at {path}. "
+            f"Model artifact not found. "
             "Run 'python -m src.predict --train' to train first."
         )
     return joblib.load(path)
@@ -374,7 +411,35 @@ def main():
         "--output-dir", type=str, default=str(WAREHOUSE_DIR),
         help="Warehouse output directory"
     )
+    parser.add_argument(
+        "--rollback", type=str, metavar="VERSION",
+        help="Roll back to a specific model version (use --list-versions to see available)"
+    )
+    parser.add_argument(
+        "--list-versions", action="store_true",
+        help="List all available model versions in the registry"
+    )
     args = parser.parse_args()
+
+    # Handle registry commands
+    if args.list_versions:
+        versions = _registry.list_versions()
+        current = _registry.get_current_version()
+        print(f"\nModel Registry ({len(versions)} versions):")
+        for v in sorted(versions, reverse=True):
+            meta = _registry.get_metadata(v)
+            marker = " [CURRENT]" if v == current else ""
+            print(f"  {v}{marker}  AUC={meta.get('auc_roc', 'N/A')}")
+        raise SystemExit(0)
+    
+    if args.rollback:
+        try:
+            _registry.set_current(args.rollback)
+            print(f"Rolled back to model version: {args.rollback}")
+            raise SystemExit(0)
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
+            raise SystemExit(1)
 
     # Default: do both if neither flag given
     do_train = args.train or (not args.train and not args.score)
@@ -416,8 +481,8 @@ def main():
         
         print(f"  AUC-ROC:   {report['auc_roc']:.3f}  (gate passed: >= {MIN_ACCEPTABLE_AUC})")
 
-        save_model(pipe, MODEL_PATH)
-        print(f"  Model saved → {MODEL_PATH}")
+        version_id = save_model(pipe, report, MODEL_PATH)
+        print(f"  Model saved → {MODEL_PATH} (registry: {version_id})")
 
         report_path = output_dir / "backtest_report.json"
         report_path.write_text(json.dumps(report, indent=2))
