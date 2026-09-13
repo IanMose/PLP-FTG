@@ -76,6 +76,15 @@ public class TelemetryService {
                 .orElse(0);
     }
 
+    /**
+     * Returns spike count for a single site using a targeted query.
+     * Use this in the simulate path instead of getPressureSpikeCountForSite().
+     */
+    public int getSpikeCountForSite(String siteId) {
+        Long count = telemetryRepository.countSpikesForSite(siteId);
+        return count != null ? count.intValue() : 0;
+    }
+
     private TelemetryReadingDto toDto(TelemetryEntity entity) {
         return TelemetryReadingDto.builder()
                 .readingId(entity.getReadingId())

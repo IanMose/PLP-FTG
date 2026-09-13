@@ -7,51 +7,61 @@
 --   analyst@sentinel.kpc     password: sentinel@admin
 --   viewer@sentinel.kpc      password: sentinel@admin
 --
--- All share the same temporary password so they can be onboarded and rotated.
---
--- Note: DataSeeder.java (ApplicationRunner) also seeds these accounts at startup
--- using the PasswordEncoder bean, with an existsByEmail guard. ON CONFLICT DO NOTHING
--- ensures this migration is safe regardless of execution order.
+-- Uses MERGE INTO (H2-compatible) so this migration is safe to re-run
+-- and also works on PostgreSQL via Flyway's H2 mode for local dev.
+-- DataSeeder.java also seeds these on startup with an existsByEmail guard.
 
-INSERT INTO app_user (name, email, password_hash, role_id, status, joined_at) VALUES
-  (
-    'Sentinel Admin',
-    'admin@sentinel.kpc',
-    '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
-    (SELECT id FROM app_role WHERE name = 'Admin'),
-    'Active',
-    CURRENT_TIMESTAMP
-  ),
-  (
-    'Jane Mwangi',
-    'manager@sentinel.kpc',
-    '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
-    (SELECT id FROM app_role WHERE name = 'HSE Manager'),
-    'Active',
-    CURRENT_TIMESTAMP
-  ),
-  (
-    'David Otieno',
-    'auditor@sentinel.kpc',
-    '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
-    (SELECT id FROM app_role WHERE name = 'Auditor'),
-    'Active',
-    CURRENT_TIMESTAMP
-  ),
-  (
-    'Amina Kariuki',
-    'analyst@sentinel.kpc',
-    '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
-    (SELECT id FROM app_role WHERE name = 'Analyst'),
-    'Active',
-    CURRENT_TIMESTAMP
-  ),
-  (
-    'Tom Kiplangat',
-    'viewer@sentinel.kpc',
-    '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
-    (SELECT id FROM app_role WHERE name = 'Viewer'),
-    'Active',
-    CURRENT_TIMESTAMP
-  )
-ON CONFLICT (email) DO NOTHING;
+MERGE INTO app_user (name, email, password_hash, role_id, status, joined_at)
+KEY (email)
+VALUES (
+  'Sentinel Admin',
+  'admin@sentinel.kpc',
+  '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
+  (SELECT id FROM app_role WHERE name = 'Admin'),
+  'Active',
+  CURRENT_TIMESTAMP
+);
+
+MERGE INTO app_user (name, email, password_hash, role_id, status, joined_at)
+KEY (email)
+VALUES (
+  'Jane Mwangi',
+  'manager@sentinel.kpc',
+  '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
+  (SELECT id FROM app_role WHERE name = 'HSE Manager'),
+  'Active',
+  CURRENT_TIMESTAMP
+);
+
+MERGE INTO app_user (name, email, password_hash, role_id, status, joined_at)
+KEY (email)
+VALUES (
+  'David Otieno',
+  'auditor@sentinel.kpc',
+  '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
+  (SELECT id FROM app_role WHERE name = 'Auditor'),
+  'Active',
+  CURRENT_TIMESTAMP
+);
+
+MERGE INTO app_user (name, email, password_hash, role_id, status, joined_at)
+KEY (email)
+VALUES (
+  'Amina Kariuki',
+  'analyst@sentinel.kpc',
+  '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
+  (SELECT id FROM app_role WHERE name = 'Analyst'),
+  'Active',
+  CURRENT_TIMESTAMP
+);
+
+MERGE INTO app_user (name, email, password_hash, role_id, status, joined_at)
+KEY (email)
+VALUES (
+  'Tom Kiplangat',
+  'viewer@sentinel.kpc',
+  '$2a$12$ErAAPenHn9MBI/5ugYgB.eGk6RwPT3TvNFKKl9xDAkIGv71UEk8g.',
+  (SELECT id FROM app_role WHERE name = 'Viewer'),
+  'Active',
+  CURRENT_TIMESTAMP
+);

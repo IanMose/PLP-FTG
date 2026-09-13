@@ -2,6 +2,7 @@ package com.sentinel.etl;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,5 +23,16 @@ public class EtlConfigController {
             "pollIntervalMs",    etlReloadService.getPollIntervalMs(),
             "rowsPerCycle",      etlReloadService.getRowsPerCycle()
         );
+    }
+
+    /**
+     * Manual trigger — forces an immediate ETL reload without waiting for the
+     * scheduled poll interval. Useful during development and live demos.
+     * POST /api/config/etl/trigger
+     */
+    @PostMapping("/etl/trigger")
+    public Map<String, Object> triggerReload() {
+        etlReloadService.reload();
+        return Map.of("status", "triggered");
     }
 }
