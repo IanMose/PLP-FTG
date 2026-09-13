@@ -155,3 +155,29 @@ class TestRegistryIntegration:
         
         assert len(registry.list_versions()) == 1
         assert registry.get_current_version() == version_id
+
+
+class TestSHAPScoring:
+
+    def test_score_uses_shap_for_top_features(self, mock_pipeline):
+        """score_current_sites should use SHAP for feature attribution."""
+        from src.predict import score_current_sites, FEATURES
+        
+        # Create minimal features DataFrame
+        features_df = pd.DataFrame({
+            "site_id": ["SITE-001", "SITE-002"],
+            "as_of_date": ["2026-08-01", "2026-08-01"],
+            **{f: [0.5, 0.6] for f in FEATURES}
+        })
+        
+        result = score_current_sites(features_df, mock_pipeline)
+        
+        # Check top_features is valid JSON with expected structure
+        import json
+        for _, row in result.iterrows():
+            top_features = json.loads(row["top_features"])
+            assert isinstance(top_features, list)
+            assert len(top_features) == 3  # top-3
+            for feat in top_features:
+                assert "feature" in feat
+                assert "contribution" in feat

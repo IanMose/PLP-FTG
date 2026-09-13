@@ -49,6 +49,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
 from src.model_registry import ModelRegistry
+from src.explainability import explain_predictions
 
 # ── Config ───────────────────────────────────────────────────────────────────
 FEATURES = [
@@ -325,20 +326,10 @@ def score_current_sites(features_df: pd.DataFrame, pipe) -> pd.DataFrame:
     X = latest[FEATURES].values
     probs = pipe.predict_proba(X)[:, 1]
 
-    # Per-prediction top-3 contributing features
-    scaler = pipe.named_steps["scaler"]
-    clf    = pipe.named_steps["clf"]
-    X_scaled = scaler.transform(X)
-    contributions = X_scaled * clf.coef_[0]  # shape: (n_sites, n_features)
-
-    top_features_list = []
-    for contribs in contributions:
-        top3_idx = np.argsort(np.abs(contribs))[::-1][:3]
-        top3 = [
-            {"feature": FEATURES[i], "contribution": round(float(contribs[i]), 4)}
-            for i in top3_idx
-        ]
-        top_features_list.append(json.dumps(top3))
+    # Per-prediction top-3 contributing features via SHAP
+    explanations = explain_predictions(pipe, X, FEATURES, top_k=3)
+    
+    top_features_list = [json.dumps(exp) for exp in explanations]
 
     result = latest[["site_id", "as_of_date"]].copy()
     result["incident_probability_7d"]  = np.round(probs, 4)
