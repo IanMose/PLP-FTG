@@ -1,36 +1,47 @@
 """
 Sentinel — Predictive Model (Stage B)
 ======================================
-Trains a logistic regression classifier that outputs the probability of a
-Critical incident occurring at a site within the next 7 days.
+Trains a classifier that outputs the probability of a Critical incident
+occurring at a site within the next 7 days.
+
+Model Selection:
+    Trains both LogisticRegression and XGBoost, selects the one with higher
+    test AUC (unless --force-logreg or --force-xgb is specified).
+
+Calibration:
+    The winning model is calibrated using CalibratedClassifierCV (sigmoid
+    method) so that predicted probabilities match empirical frequencies.
+
+Explainability:
+    Feature attributions are computed via SHAP (LinearExplainer for logistic,
+    TreeExplainer for XGBoost) and exported in the top_features field.
+
+Quality Gate:
+    Training refuses to save if test AUC falls below MIN_ACCEPTABLE_AUC.
+    This prevents regressions when experimenting with features or algorithms.
+
+Model Registry:
+    Each training run produces a versioned artifact (timestamp_gitsha.pkl).
+    Use --list-versions to see history, --rollback VERSION to restore.
 
 Label definition:
     label = 1  if ANY incident with severity == 'Critical' exists for that
                site_id in (as_of_date, as_of_date + 7 days]
     label = 0  otherwise
 
-Why 7-day window instead of the plan's 30-day?
-    The raw data has ~6 181 incidents with 2 449 High/Critical spread across
-    6 sites over 3+ years. A 30-day forward window yields a 97.5% positive rate
-    (every site has an H/C incident somewhere in the next 30 days). That gives a
-    trivial model that always predicts 1.  A 7-day Critical-only window yields
-    51% positive overall — nearly balanced — with strong site differentiation:
-    SITE-003=92%, SITE-006=75% vs SITE-004=27%, SITE-001=34%.
-    This is documented in backtest_report.json as label_definition.
-
 Time split:
-    train: as_of_date < 2026-06-12   (~2/3 of the 180-day window, 714 rows)
-    test:  as_of_date >= 2026-06-12  (~1/3, 366 rows)
+    train: as_of_date < 2026-06-12   (~2/3 of the 180-day window)
+    test:  as_of_date >= 2026-06-12  (~1/3)
     Never shuffle before splitting — forward simulation of real deployment.
-
-Missing value imputation:
-    days_since_last_audit: NULL → 999 (sentinel for "never audited")
-    All other feature columns are fully populated by Stage A.
 
 Usage:
     python -m src.predict                    # train + score (default)
     python -m src.predict --train            # rebuild model from scratch
     python -m src.predict --score            # score using existing pkl
+    python -m src.predict --list-versions    # show model registry
+    python -m src.predict --rollback VER     # restore previous version
+    python -m src.predict --force-logreg     # skip XGBoost comparison
+    python -m src.predict --force-xgb        # skip LogisticRegression comparison
 """
 
 import argparse
