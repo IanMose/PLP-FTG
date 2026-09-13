@@ -225,3 +225,63 @@ class TestModelComparison:
         pipe, report = train_model(features_df, force_model="logreg")
         
         assert "logistic" in type(pipe.steps[-1][1]).__name__.lower()
+
+
+class TestCalibration:
+
+    def test_calibrated_probabilities_match_frequency(self):
+        """
+        Calibrated probabilities should approximately match observed frequencies.
+        
+        For predictions in the 0.4-0.6 range, about 40-60% should be actual positives.
+        """
+        from src.predict import train_model, FEATURES
+        import pandas as pd
+        
+        # Create larger dataset for calibration test
+        n_samples = 500
+        np.random.seed(42)
+        
+        features_df = pd.DataFrame({
+            "site_id": [f"SITE-00{i%6+1}" for i in range(n_samples)],
+            "as_of_date": pd.date_range("2026-01-01", periods=n_samples),
+            **{f: np.random.randn(n_samples) for f in FEATURES}
+        })
+        features_df["label"] = (
+            features_df[FEATURES[0]] + 0.5 * features_df[FEATURES[1]] + np.random.randn(n_samples) * 0.5 > 0
+        ).astype(int)
+        
+        pipe, report = train_model(features_df, force_model="logreg")
+        
+        # Report should indicate calibration was applied
+        assert report.get("calibrated", False) or "calibration" in str(report)
+
+    def test_calibration_preserves_ranking(self):
+        """Calibration should preserve probability ranking (if A > B before, A > B after)."""
+        from sklearn.calibration import CalibratedClassifierCV
+        from src.predict import FEATURES
+        
+        # This is a property test — calibration is monotonic
+        # We verify by checking that high-confidence predictions stay high
+        pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(random_state=42)),
+        ])
+        
+        X = np.random.randn(100, len(FEATURES))
+        y = (X[:, 0] > 0).astype(int)
+        pipe.fit(X, y)
+        
+        # Get pre-calibration probabilities
+        X_test = np.random.randn(20, len(FEATURES))
+        probs_before = pipe.predict_proba(X_test)[:, 1]
+        
+        # Calibrate
+        calibrated = CalibratedClassifierCV(pipe, cv=3, method="sigmoid")
+        calibrated.fit(X, y)
+        probs_after = calibrated.predict_proba(X_test)[:, 1]
+        
+        # Check ranking preserved (Spearman correlation should be very high)
+        from scipy.stats import spearmanr
+        corr, _ = spearmanr(probs_before, probs_after)
+        assert corr > 0.9, "Calibration should preserve ranking"

@@ -47,6 +47,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
 from src.model_registry import ModelRegistry
 from src.explainability import explain_predictions
@@ -155,6 +157,30 @@ def build_labels(features_df: pd.DataFrame, raw_dir: Path = RAW_DIR) -> pd.DataF
 
 # ── Training ──────────────────────────────────────────────────────────────────
 
+class _CalibratedPipelineWrapper:
+    """
+    Wrapper to make CalibratedClassifierCV behave like a Pipeline.
+    
+    This preserves access to the underlying model's named_steps for
+    explainability while using calibrated probabilities for predictions.
+    """
+    
+    def __init__(self, base_pipe: Pipeline, calibrated):
+        self.base_pipe = base_pipe
+        self.calibrated = calibrated
+        self.named_steps = base_pipe.named_steps
+        self.steps = base_pipe.steps
+    
+    def predict(self, X):
+        return self.calibrated.predict(X)
+    
+    def predict_proba(self, X):
+        return self.calibrated.predict_proba(X)
+    
+    def transform(self, X):
+        return self.base_pipe.transform(X)
+
+
 def _impute(df: pd.DataFrame) -> pd.DataFrame:
     """Fill NULL days_since_last_audit with the sentinel value 999."""
     out = df.copy()
@@ -241,7 +267,7 @@ def train_model(
         pipe, _ = candidates[winner_name]
         print(f"  Selected: {winner_name} (higher AUC)")
     
-    # Generate report for the winner
+    # Generate report for the winner (before calibration for fair comparison)
     report = evaluate_model(pipe, X_test, y_test, train_df, test_df)
     report["model_type"] = winner_name
     report["comparison"] = {
@@ -249,7 +275,33 @@ def train_model(
         for name, (_, auc) in candidates.items()
     }
     
-    return pipe, report
+    # Calibrate the winning model
+    # Use a held-out portion of training data for calibration
+    # to avoid optimistic bias
+    cal_size = min(100, len(X_train) // 5)
+    X_cal, y_cal = X_train[-cal_size:], y_train[-cal_size:]
+    X_train_main, y_train_main = X_train[:-cal_size], y_train[:-cal_size]
+    
+    # Re-fit on main training set (smaller)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pipe.fit(X_train_main, y_train_main)
+    
+    # Calibrate using CalibratedClassifierCV with FrozenEstimator (sklearn 1.9+)
+    frozen_pipe = FrozenEstimator(pipe)
+    calibrated_pipe = CalibratedClassifierCV(frozen_pipe, method="sigmoid")
+    calibrated_pipe.fit(X_cal, y_cal)
+    
+    print(f"  Calibration: applied (sigmoid method, {cal_size} samples)")
+    
+    # Wrap in a Pipeline-like interface for compatibility
+    final_pipe = _CalibratedPipelineWrapper(pipe, calibrated_pipe)
+    
+    report["calibrated"] = True
+    report["calibration_method"] = "sigmoid"
+    report["calibration_samples"] = cal_size
+    
+    return final_pipe, report
 
 
 def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.DataFrame) -> dict:
