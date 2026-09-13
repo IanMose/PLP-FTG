@@ -44,7 +44,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
@@ -71,6 +71,10 @@ NULL_AUDIT_SENTINEL = 999
 
 # Time split cutoff — day 120 of the 180-day window
 TRAIN_CUTOFF = date(2026, 6, 12)
+
+# Quality gate — model must exceed this AUC to be saved
+# Set conservatively below current baseline to catch regressions, not block incremental work
+MIN_ACCEPTABLE_AUC = 0.55
 
 RAW_DIR = Path("data/raw")
 WAREHOUSE_DIR = Path("data/warehouse")
@@ -197,6 +201,13 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
     y_pred = pipe.predict(X_test)
     y_prob = pipe.predict_proba(X_test)[:, 1]
 
+    # AUC-ROC for quality gating
+    try:
+        auc = float(roc_auc_score(y_test, y_prob))
+    except ValueError:
+        # Happens if y_test has only one class
+        auc = 0.0
+
     prec   = float(precision_score(y_test, y_pred, zero_division=0))
     rec    = float(recall_score(y_test, y_pred, zero_division=0))
     f1     = float(f1_score(y_test, y_pred, zero_division=0))
@@ -236,6 +247,7 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
         "precision":            round(prec, 4),
         "recall":               round(rec, 4),
         "f1":                   round(f1, 4),
+        "auc_roc":              round(auc, 4),
         "feature_importances":  feat_importance,
         "classification_report": classification_report(y_test, y_pred, output_dict=True),
     }
@@ -395,6 +407,14 @@ def main():
         print(f"  Precision: {report['precision']:.3f}")
         print(f"  Recall:    {report['recall']:.3f}")
         print(f"  F1:        {report['f1']:.3f}")
+
+        # Quality gate — refuse to save model if AUC below threshold
+        if report["auc_roc"] < MIN_ACCEPTABLE_AUC:
+            print(f"\n[GATE FAILED] Model AUC {report['auc_roc']:.4f} < minimum {MIN_ACCEPTABLE_AUC}")
+            print("Model NOT saved. Improve features or algorithm before retrying.")
+            raise SystemExit(1)
+        
+        print(f"  AUC-ROC:   {report['auc_roc']:.3f}  (gate passed: >= {MIN_ACCEPTABLE_AUC})")
 
         save_model(pipe, MODEL_PATH)
         print(f"  Model saved → {MODEL_PATH}")
