@@ -21,5 +21,6 @@ public class LiveBatchRecord {
     private List<Map<String, Object>> audits;
     private List<Map<String, Object>> telemetry;
     private List<Map<String, Object>> environmental;
+    private List<Map<String, Object>> tankTelemetry;  // Stage 3: overfill detection
     private Map<String, Integer> summary;
 }

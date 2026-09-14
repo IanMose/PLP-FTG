@@ -6,6 +6,8 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
+  // Disable Turbopack to avoid filesystem path issues
+  turbopack: false,
   async redirects() {
     return [
       {
