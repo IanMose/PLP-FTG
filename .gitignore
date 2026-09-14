@@ -62,6 +62,8 @@ sentinel-system-summary.md
 
 # === ML model registry ===
 models/
+<<<<<<< HEAD
+=======
 sentinel-system-summary.md
 hackathon_reflection.md
 docs/stage3-hse-mvp-build-plan.md
@@ -73,5 +75,6 @@ docs/sentinel-mvp-master-build-plan.md
 .worktrees/
 .kiro/steering/
 .kiro/skills
+>>>>>>> f493b03d4aaad89e3b08256de5887f0f6515f1c3
 
 sentinel/docs/
