@@ -38,10 +38,23 @@ Thumbs.db
 
 # md files #
 Sentinel_Stage2_Build_Plan.pdf
+Sentinel_Stage3_Build_Plan.md
+Sentinel_Stage3_Build_Plan.docx
 Sentinel_Repo_Setup_Guide.md
 sentinel-frontend/CLEANUP_AUDIT.md
 docs/current-stage-validation-report.md
 docs/stage2-alert-gaps-backlog.md
+docs/STAGE3_IMPLEMENTATION_PLAN.md
+
+# === Images / screenshots ===
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.avif
+
+# === ML model registry ===
+models/
 sentinel-system-summary.md
 hackathon_reflection.md
 docs/stage3-hse-mvp-build-plan.md
