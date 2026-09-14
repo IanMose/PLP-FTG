@@ -53,6 +53,8 @@ public class SecurityConfig {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
+        // WebSocket handshake goes through the same CORS filter
+        source.registerCorsConfiguration("/ws/**", config);
         return source;
     }
 
@@ -70,7 +72,8 @@ public class SecurityConfig {
                     "/h2-console/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
-                    "/api/data/ingest"         // ETL push — authenticated via X-ETL-Api-Key header
+                    "/api/data/ingest",        // ETL push — authenticated via X-ETL-Api-Key header
+                    "/ws/**"                   // WebSocket handshake — auth handled at app level
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
                 // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)

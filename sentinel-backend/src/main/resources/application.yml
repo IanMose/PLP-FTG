@@ -85,6 +85,25 @@ sentinel:
   dashboard:
     url: ${DASHBOARD_URL:http://localhost:3000}
 
+  # ── Kafka / WebSocket notifications ───────────────────────────────────────
+  # Set sentinel.kafka.enabled=true and supply KAFKA_* env vars to activate.
+  # When false the producer is a no-op — safe for local dev without a broker.
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+
+---
+# Kafka defaults (shared across all profiles — overridden per-profile below)
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: sentinel-backend
+      auto-offset-reset: earliest
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}
+
 ---
 # PostgreSQL profile — local dev only
 # Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres

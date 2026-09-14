@@ -37,3 +37,17 @@ spring:
 sentinel:
   etl:
     enabled: false
+  # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: sentinel-backend
+      auto-offset-reset: earliest
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}

@@ -62,6 +62,7 @@ public class AlertRulesEngine {
     private final AuditRepository   auditRepository;
     private final IncidentRepository incidentRepository;
     private final NarrativeService  narrativeService;
+    private final com.sentinel.messaging.AlertKafkaProducer alertKafkaProducer;
 
     /**
      * Evaluate all rules against the newly ingested incidents and audits.
@@ -389,6 +390,10 @@ public class AlertRulesEngine {
         log.info("AlertRulesEngine: created alert [{}] site={} rule='{}' narrative-length={}",
                 alert.getId(), siteId, rule,
                 narrative != null ? narrative.length() : 0);
+
+        // Publish to Kafka → consumed by AlertKafkaConsumer → broadcast via WebSocket
+        alertKafkaProducer.publish(alert);
+
         return alert.getId();
     }
 }
