@@ -16,11 +16,15 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { DriftSummary } from "@/lib/sentinel/api";
+import { useAuthStore } from "@/stores/auth/auth-store";
 
 const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
 
-async function getDrift(): Promise<DriftSummary> {
-  const res = await fetch(`${API_BASE}/api/ml/drift`, { cache: "no-store" });
+async function getDrift(token: string | undefined): Promise<DriftSummary> {
+  const res = await fetch(`${API_BASE}/api/ml/drift`, {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -40,6 +44,7 @@ function DriftStatusBadge({ status }: { status: DriftSummary["driftStatus"] }) {
 }
 
 export default function DriftMonitorPage() {
+  const token = useAuthStore((s) => s.user?.token);
   const [drift, setDrift] = useState<DriftSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +52,7 @@ export default function DriftMonitorPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const d = await getDrift();
+      const d = await getDrift(token);
       setDrift(d);
       setError(null);
     } catch (e: unknown) {
@@ -57,7 +62,7 @@ export default function DriftMonitorPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [token]);
 
   const trendData = drift?.trend?.map((t) => ({
     date: new Date(t.computedAt).toLocaleDateString("en-GB", { month: "short", day: "numeric" }),

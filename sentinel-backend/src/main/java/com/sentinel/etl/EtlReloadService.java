@@ -11,6 +11,8 @@ import com.sentinel.site.AuditRepository;
 import com.sentinel.site.IncidentEntity;
 import com.sentinel.site.IncidentRepository;
 import com.sentinel.site.SiteRepository;
+import com.sentinel.telemetry.TankTelemetryEntity;
+import com.sentinel.telemetry.TankTelemetryRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,7 @@ public class EtlReloadService {
     private final SiteRepository                 siteRepository;
     private final EnvironmentalReadingRepository environmentalRepository;
     private final PredictionRepository           predictionRepository;
+    private final TankTelemetryRepository        tankTelemetryRepository;
     private final ObjectMapper                   objectMapper;
     private final AlertRulesEngine               alertRulesEngine;
 
@@ -163,12 +166,13 @@ public class EtlReloadService {
             List<AuditEntity>    savedAudits    = loadAudits(batch.getAudits(), batch.getBatchId(), knownSiteIds);
             int envLoaded = loadEnvironmental(batch.getEnvironmental());
             int predsLoaded = loadPredictions();
+            int tankLoaded = loadTankTelemetry(batch.getTankTelemetry(), batch.getBatchId(), knownSiteIds);
 
             lastProcessedBatchId = batch.getBatchId();
 
-            log.info("ETL reload [{}]: +{} incidents, +{} audits, +{} env readings, {} predictions | summary={}",
+            log.info("ETL reload [{}]: +{} incidents, +{} audits, +{} env readings, {} predictions, +{} tank telemetry | summary={}",
                     shortId(batch.getBatchId()), savedIncidents.size(), savedAudits.size(),
-                    envLoaded, predsLoaded, batch.getSummary());
+                    envLoaded, predsLoaded, tankLoaded, batch.getSummary());
 
             // Evaluate alert rules against the newly loaded incidents.
             // Runs outside the loader transactions — alert failures never affect data load.
@@ -308,6 +312,85 @@ public class EtlReloadService {
         } catch (Exception ex) {
             // FK violation: asset not yet in dim_asset — log and continue
             log.debug("ETL: environmental batch save partial failure — {}", ex.getMessage());
+        }
+        return toSave.size();
+    }
+
+    // ── Tank Telemetry (Stage 3 — overfill detection) ─────────────────────────
+
+    /**
+     * Load tank-level telemetry readings for overfill detection.
+     * This is the primary signal for Problem 10: Spill and Overfill Prevention.
+     * 
+     * Records with tank_level_pct >= 95% AND valve_status = 'Open' are flagged
+     * as overfill_flag = true for downstream event detection.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public int loadTankTelemetry(List<Map<String, Object>> records, String batchId, Set<String> knownSiteIds) {
+        if (records == null || records.isEmpty()) return 0;
+
+        // Deduplication: find IDs already in DB
+        Set<String> candidateIds = records.stream()
+                .map(r -> str(r, "reading_id"))
+                .filter(id -> id != null && !id.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> existingIds = tankTelemetryRepository.findExistingIds(candidateIds);
+
+        List<TankTelemetryEntity> toSave = new java.util.ArrayList<>();
+        for (Map<String, Object> r : records) {
+            String id = str(r, "reading_id");
+            if (id == null || id.isBlank()) continue;
+            if (existingIds.contains(id)) continue;
+
+            String siteId = normaliseSiteId(str(r, "site_id"));
+            if (siteId == null || !knownSiteIds.contains(siteId)) {
+                log.debug("ETL: skipping tank telemetry {} — unknown site '{}'", id, str(r, "site_id"));
+                continue;
+            }
+
+            TankTelemetryEntity e = new TankTelemetryEntity();
+            e.setReadingId(id);
+            e.setSiteId(siteId);
+            e.setTankId(str(r, "tank_id"));
+            e.setReadingTimestamp(parseDateTime(str(r, "reading_timestamp")));
+            
+            // Tank level - critical field for overfill detection
+            Double tankLevel = toDouble(r.get("tank_level_pct"));
+            if (tankLevel != null) {
+                e.setTankLevelPct(java.math.BigDecimal.valueOf(tankLevel));
+            }
+            
+            Double flowRate = toDouble(r.get("flow_rate_bph"));
+            if (flowRate != null) {
+                e.setFlowRateBph(java.math.BigDecimal.valueOf(flowRate));
+            }
+            
+            e.setValveStatus(str(r, "valve_status"));
+            e.setSensorId(str(r, "sensor_id"));
+            e.setLoadingOperationId(str(r, "loading_operation_id"));
+            
+            // Compute overfill flag: level >= 95% AND valve Open
+            boolean overfillFlag = tankLevel != null 
+                && tankLevel >= 95.0 
+                && "Open".equalsIgnoreCase(e.getValveStatus());
+            e.setOverfillFlag(overfillFlag);
+            
+            e.setBatchId(batchId);
+            e.setIngestionTimestamp(java.time.LocalDateTime.now());
+            
+            toSave.add(e);
+            
+            if (overfillFlag) {
+                log.warn("ETL: overfill risk detected — site={}, tank={}, level={}%, valve={}",
+                        siteId, e.getTankId(), tankLevel, e.getValveStatus());
+            }
+        }
+
+        try {
+            tankTelemetryRepository.saveAll(toSave);
+            log.debug("ETL: loaded {} tank telemetry readings", toSave.size());
+        } catch (Exception ex) {
+            log.warn("ETL: tank telemetry batch save partial failure — {}", ex.getMessage());
         }
         return toSave.size();
     }
