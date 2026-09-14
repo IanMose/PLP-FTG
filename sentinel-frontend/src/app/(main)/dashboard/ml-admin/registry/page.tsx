@@ -140,8 +140,12 @@ export default function ModelRegistryPage() {
       headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
     })
       .then((r) => r.json())
-      .then(setModels)
-      .catch(() => {});
+      .then((data) => {
+        // Handle both array response and object with nested array
+        const list = Array.isArray(data) ? data : (data?.models ?? data?.data ?? []);
+        setModels(list);
+      })
+      .catch(() => setModels([]));
   };
 
   const loadComparison = async () => {
