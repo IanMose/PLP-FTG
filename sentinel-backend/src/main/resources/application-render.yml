@@ -10,7 +10,7 @@ spring:
   datasource:
     # JDBC URL must NOT contain credentials — pass them separately
     # Format: jdbc:postgresql://host:port/database
-    url: ${JDBC_DATABASE_URL:jdbc:postgresql://localhost:5432/sentinel}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/sentinel}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME:sentinel}
     password: ${DB_PASSWORD:sentinel}

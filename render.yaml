@@ -35,8 +35,8 @@ services:
 
       # ── Database — wired from the sibling DB service above ───────────────
       # JDBC URL without credentials (credentials passed separately)
-      - key: JDBC_DATABASE_URL
-        value: jdbc:postgresql://dpg-dakkgh2d0e5s73e9pae0-a:5432/sentinel_k6c0
+      - key: DATABASE_URL
+        value: jdbc:postgresql://dpg-dakkgh2d0e5s73e9pae0-a/sentinel_k6c0
 
       - key: DB_USERNAME
         value: sentinel
