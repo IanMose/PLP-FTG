@@ -158,7 +158,7 @@ public class AiCapaService {
                 ? event.getCreatedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm"))
                 : "unknown"));
         sb.append(String.format("EVENT ID: %s\n", event.getEventId()));
-        if (event.isActuationTriggered()) {
+        if (Boolean.TRUE.equals(event.getActuationTriggered())) {
             sb.append("AUTOMATED RESPONSE: Sentinel triggered simulated valve closure via control plane.\n");
         }
         if (HIGH_RISK_SITES.contains(event.getSiteId())) {
