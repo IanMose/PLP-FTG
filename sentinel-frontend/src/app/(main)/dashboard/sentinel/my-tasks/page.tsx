@@ -1,27 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CapaStatusBadge } from "../capas/_components/capa-status-badge";
 import { BackendError } from "@/components/backend-error";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-
 export default function MyTasksPage() {
-  const [capas, setCapas] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-    fetch(`${API_BASE}/api/capas`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setCapas)
-      .catch((e) => setError(e.message));
-  }, []);
+  const { data: capas = [], error } = useQuery<any[]>({
+    queryKey: ["my-capas"],
+    queryFn: () =>
+      fetch("/api/proxy/capas/route", { cache: "no-store" })
+        // fall back to the existing server-side fetch pattern via the existing api
+        .catch(() => fetch("/api/proxy/capas")).then((r) => r.json()),
+    staleTime: 30_000,
+  });
 
   const active = capas.filter((c) => ["open", "in_progress"].includes(c.status));
   const pending = capas.filter((c) => c.status === "completed");
@@ -30,7 +24,7 @@ export default function MyTasksPage() {
   if (error) return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl tracking-tight">My Tasks</h1>
-      <BackendError message={error} />
+      <BackendError message={String(error)} />
     </div>
   );
 

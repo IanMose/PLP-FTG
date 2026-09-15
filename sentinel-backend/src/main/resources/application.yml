@@ -72,6 +72,19 @@ sentinel:
     timeout-ms: 3000 # 3 second hard timeout — never block alert creation
     enabled: ${LLM_ENABLED:true}
 
+  # ── Slack integration (Stage 3 Control Plane) ─────────────────────────────
+  # Configure SLACK_WEBHOOK_URL to enable real Slack notifications.
+  # When disabled or webhook missing, SlackNotificationService logs instead of posting.
+  # Create a webhook at https://api.slack.com/apps → Incoming Webhooks
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL:}
+    enabled: ${SLACK_ENABLED:false}
+    channel: ${SLACK_CHANNEL:#sentinel-alerts}
+
+  # ── Dashboard URL for Slack message links ─────────────────────────────────
+  dashboard:
+    url: ${DASHBOARD_URL:http://localhost:3000}
+
 ---
 # PostgreSQL profile — local dev only
 # Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres

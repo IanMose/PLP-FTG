@@ -1,11 +1,15 @@
 package com.sentinel.ml;
 
-import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "model_registry")
@@ -55,4 +59,12 @@ public class ModelRegistryEntity {
      */
     @Column(name = "feature_importance", columnDefinition = "TEXT")
     private String featureImportance;
+
+    /**
+     * V30: Base64-encoded model artifact (PKL file).
+     * Used when filesystem is ephemeral (Render free tier).
+     * logreg_v1.pkl is ~5KB → ~7KB base64. Acceptable in TEXT column.
+     */
+    @Column(name = "artifact_blob", columnDefinition = "TEXT")
+    private String artifactBlob;
 }

@@ -1,9 +1,12 @@
 package com.sentinel.common.config;
 
-import com.sentinel.common.security.JwtAuthFilter;
+import java.util.Arrays;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -16,10 +19,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.http.HttpMethod;
 
-import java.util.Arrays;
-import java.util.List;
+import com.sentinel.common.security.JwtAuthFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -82,7 +83,11 @@ public class SecurityConfig {
                     "/api/ingestion/**",
                     "/api/config/**",
                     "/api/analytics/**",
-                    "/api/ml/champion-artifact-path"
+                    "/api/ml/champion-artifact-path",
+                    // Stage 3 Control Plane — demo endpoints (hackathon judges)
+                    "/api/demo/**",
+                    "/api/executive/**",
+                    "/api/actuate/**"
                 ).permitAll()
                 // Hazard reports — any authenticated user can submit; HSE roles can list
                 .requestMatchers(HttpMethod.POST, "/api/hazard-reports").authenticated()

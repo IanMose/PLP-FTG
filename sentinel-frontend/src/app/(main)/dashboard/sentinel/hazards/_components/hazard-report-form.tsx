@@ -40,13 +40,9 @@ export function HazardReportForm() {
     }
     setLoading(true);
     try {
-      const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-      const res = await fetch(`${API_BASE}/api/hazard-reports`, {
+      const res = await fetch("/api/proxy/hazards", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

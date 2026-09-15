@@ -500,42 +500,62 @@ def push_to_backend(export_path: Path, push_url: str, api_key: str, verbose: boo
     """
     POST the live_batch.json payload to the Spring Boot backend's /api/data/ingest endpoint.
 
+    Retries up to 3 times with exponential backoff to survive Render free-tier cold starts
+    (which can take 30-60s on first request after inactivity).
+
     Returns True on success, False on failure.
     """
     import urllib.request
     import urllib.error
+    import time
 
     def log(msg):
         if verbose:
             print(msg)
 
-    try:
-        with open(export_path, "rb") as f:
-            payload = f.read()
+    with open(export_path, "rb") as f:
+        payload = f.read()
 
-        req = urllib.request.Request(
-            url=push_url,
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "X-ETL-Api-Key": api_key,
-            },
-            method="POST",
-        )
+    max_attempts = 3
+    # Timeouts per attempt: 60s (cold start wake), 45s, 30s
+    timeouts = [60, 45, 30]
+    backoff_seconds = [0, 15, 30]
 
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = resp.read().decode()
-            log(f"[PUSH] {resp.status} OK → {push_url}")
-            log(f"[PUSH] Response: {body}")
-            return True
+    for attempt in range(1, max_attempts + 1):
+        wait = backoff_seconds[attempt - 1]
+        if wait:
+            log(f"[PUSH] Retrying in {wait}s (attempt {attempt}/{max_attempts})...")
+            time.sleep(wait)
 
-    except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ""
-        log(f"[PUSH] HTTP {e.code} error → {push_url}: {body}")
-        return False
-    except Exception as e:
-        log(f"[PUSH] Failed to push to backend: {e}")
-        return False
+        try:
+            req = urllib.request.Request(
+                url=push_url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-ETL-Api-Key": api_key,
+                },
+                method="POST",
+            )
+
+            with urllib.request.urlopen(req, timeout=timeouts[attempt - 1]) as resp:
+                body = resp.read().decode()
+                log(f"[PUSH] {resp.status} OK → {push_url}")
+                log(f"[PUSH] Response: {body}")
+                return True
+
+        except urllib.error.HTTPError as e:
+            body = e.read().decode() if e.fp else ""
+            log(f"[PUSH] HTTP {e.code} error → {push_url}: {body}")
+            # 4xx errors are not retryable
+            if 400 <= e.code < 500:
+                return False
+
+        except Exception as e:
+            log(f"[PUSH] Attempt {attempt}/{max_attempts} failed: {e}")
+
+    log(f"[PUSH] All {max_attempts} attempts failed — giving up.")
+    return False
 
 
 def main():

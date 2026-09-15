@@ -1025,6 +1025,165 @@ def write_csv(rows: list[dict], path: Path, fieldnames: list[str]):
 
 
 # ============================================================================
+# Dataset 7: Tank Telemetry (Stage 3 — Overfill Detection)
+# ============================================================================
+def generate_tank_telemetry(n: int, seed_overfill_at_site003: bool = True) -> list[dict]:
+    """
+    Generate tank-level telemetry readings for loading gantry overfill detection.
+    
+    This is the primary signal for Problem 10: Spill and Overfill Prevention.
+    
+    Key features:
+    - Tank level % (0-100) during loading operations
+    - Valve status (Open/Closed/Partially Open)
+    - Loading operation ID (groups readings in same loading session)
+    - Overfill risk = tank_level >= 95% AND valve = Open
+    
+    Seeded scenario: SITE-003 (Thange) has a deliberate overfill event at 96.5%
+    to demonstrate the control loop during hackathon demo.
+    """
+    rows = []
+    
+    # Tank IDs per site
+    tank_ids = {
+        "SITE-001": ["TANK-A1", "TANK-A2", "TANK-B1"],
+        "SITE-002": ["TANK-A1", "TANK-A2", "TANK-A3", "TANK-B1", "TANK-B2"],
+        "SITE-003": ["TANK-A1", "TANK-A2"],  # Demo site - seeded overfill
+        "SITE-004": ["TANK-A1", "TANK-B1"],
+        "SITE-005": ["TANK-A1", "TANK-A2", "TANK-B1"],
+        "SITE-006": ["TANK-A1"],  # High-risk site
+        "SITE-007": ["TANK-A1", "TANK-A2"],
+    }
+    
+    sensor_ids = [f"TANK-SENSOR-{j:03d}" for j in range(1, 20)]
+    
+    start_date = TODAY - timedelta(days=30)
+    
+    loading_operation_counter = 1
+    reading_counter = 1
+    
+    # Generate normal readings across all sites
+    for i in range(n):
+        site = random.choice(SITE_CODES)
+        tanks = tank_ids.get(site, ["TANK-A1"])
+        tank = random.choice(tanks)
+        
+        timestamp = start_date + timedelta(seconds=random.randint(0, 30 * 24 * 3600))
+        
+        # Normal tank levels during loading (50-92%)
+        tank_level = round(float(np.clip(np.random.normal(75, 12), 30, 92)), 2)
+        
+        # Flow rate in barrels per hour
+        flow_rate = round(float(np.random.normal(400, 50)), 2)
+        flow_rate = max(100.0, min(600.0, flow_rate))
+        
+        # Valve status during normal operation
+        valve_status = random.choices(
+            ["Open", "Closed", "Partially Open"],
+            weights=[0.60, 0.25, 0.15],
+            k=1
+        )[0]
+        
+        # Loading operation - group readings
+        loading_op_id = f"LOAD-{loading_operation_counter:05d}"
+        if random.random() < 0.1:  # New loading operation ~10% of time
+            loading_operation_counter += 1
+        
+        overfill_flag = tank_level >= 95.0 and valve_status == "Open"
+        
+        record_id = f"TANK-{reading_counter:06d}"
+        reading_counter += 1
+        
+        row = {
+            "reading_id": record_id,
+            "site_id": site,
+            "tank_id": tank,
+            "reading_timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
+            "tank_level_pct": tank_level,
+            "flow_rate_bph": flow_rate,
+            "valve_status": valve_status,
+            "sensor_id": random.choice(sensor_ids),
+            "loading_operation_id": loading_op_id,
+            "overfill_flag": overfill_flag,
+            "batch_id": f"BATCH-{timestamp.strftime('%Y%m%d')}",
+        }
+        rows.append(row)
+    
+    # ---- Seed the demo overfill scenario at SITE-003 ----
+    if seed_overfill_at_site003:
+        demo_loading_op = f"LOAD-SEED-{int(datetime.now().timestamp()) % 10000:04d}"
+        demo_timestamp = TODAY - timedelta(hours=2)  # Recent
+        
+        # Create a sequence of readings showing tank filling up
+        demo_readings = [
+            # Start of loading
+            {"level": 45.0, "valve": "Open", "offset_min": -30},
+            {"level": 65.0, "valve": "Open", "offset_min": -20},
+            {"level": 82.0, "valve": "Open", "offset_min": -10},
+            {"level": 91.0, "valve": "Open", "offset_min": -5},
+            # OVERFILL RISK - valve still open at 96.5%
+            {"level": 96.5, "valve": "Open", "offset_min": 0},
+        ]
+        
+        for reading in demo_readings:
+            ts = demo_timestamp + timedelta(minutes=reading["offset_min"])
+            record_id = f"TANK-DEMO-{reading_counter:03d}"
+            reading_counter += 1
+            
+            overfill = reading["level"] >= 95.0 and reading["valve"] == "Open"
+            
+            demo_row = {
+                "reading_id": record_id,
+                "site_id": "SITE-003",
+                "tank_id": "TANK-A1",
+                "reading_timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
+                "tank_level_pct": reading["level"],
+                "flow_rate_bph": round(float(np.random.normal(450, 20)), 2),
+                "valve_status": reading["valve"],
+                "sensor_id": "TANK-SENSOR-003",
+                "loading_operation_id": demo_loading_op,
+                "overfill_flag": overfill,
+                "batch_id": "BATCH-DEMO-SEED",
+            }
+            rows.append(demo_row)
+            
+            if overfill:
+                log_issue(record_id, "tank_telemetry", "overfill_risk",
+                          f"level={reading['level']}% valve={reading['valve']} at SITE-003")
+    
+    # ---- Inject messiness ----
+    for row in rows:
+        rid = row["reading_id"]
+        
+        # 1. Dirty site label (~8%)
+        if row["site_id"] in SITE_DIRTY_VARIANTS and random.random() < 0.08:
+            dirty = random.choice(SITE_DIRTY_VARIANTS[row["site_id"]])
+            log_issue(rid, "tank_telemetry", "dirty_label:site_id", f"{row['site_id']} -> {dirty}")
+            row["site_id"] = dirty
+        
+        # 2. Sensor dropout (~2%) - null tank level (critical)
+        if random.random() < 0.02:
+            row["tank_level_pct"] = ""
+            log_issue(rid, "tank_telemetry", "sensor_dropout", "tank_level_pct set to null")
+        
+        # 3. Invalid tank level (~1%) - outside 0-100 range
+        if random.random() < 0.01 and row["tank_level_pct"] != "":
+            bad_level = random.choice([-5.0, 105.0, 120.0, -0.5])
+            row["tank_level_pct"] = bad_level
+            log_issue(rid, "tank_telemetry", "out_of_range:tank_level_pct", str(bad_level))
+    
+    # 4. Duplicate reading_ids (~0.5%)
+    n_dupes = max(1, int(len(rows) * 0.005))
+    for row in random.sample(rows, min(n_dupes, len(rows))):
+        dupe = dict(row)
+        rows.append(dupe)
+        log_issue(dupe["reading_id"], "tank_telemetry", "duplicate_id")
+    
+    random.shuffle(rows)
+    return rows
+
+
+# ============================================================================
 # Main
 # ============================================================================
 def main():
@@ -1089,14 +1248,24 @@ def main():
     ]
     write_csv(corridor_telemetry, OUT_DIR / "corridor_telemetry.csv", corridor_telemetry_fields)
 
+    # --- tank_telemetry.csv (Stage 3 — overfill detection) ---
+    print("\n8. Generating tank_telemetry.csv (1500 rows + seeded overfill at SITE-003) ...")
+    tank_telemetry = generate_tank_telemetry(1500, seed_overfill_at_site003=True)
+    tank_telemetry_fields = [
+        "reading_id", "site_id", "tank_id", "reading_timestamp",
+        "tank_level_pct", "flow_rate_bph", "valve_status",
+        "sensor_id", "loading_operation_id", "overfill_flag", "batch_id",
+    ]
+    write_csv(tank_telemetry, OUT_DIR / "tank_telemetry.csv", tank_telemetry_fields)
+
     # --- Ground truth issues log ---
-    print("\n8. Writing ground_truth_issues.csv ...")
+    print("\n9. Writing ground_truth_issues.csv ...")
     gt_path = OUT_DIR / "ground_truth_issues.csv"
     gt_fields = ["record_id", "dataset", "issue_type", "detail"]
     write_csv(ground_truth, gt_path, gt_fields)
 
     # --- Data generation notes ---
-    print("\n9. Writing docs/data_generation_notes.md ...")
+    print("\n10. Writing docs/data_generation_notes.md ...")
     write_messiness_spec(incidents, audits, telemetry_batch1 + telemetry_batch2,
                          corridor_assets, corridor_telemetry)
 
@@ -1105,6 +1274,7 @@ def main():
         len(incidents) + len(audits) + len(site_rows)
         + len(telemetry_batch1) + len(telemetry_batch2)
         + len(corridor_assets) + len(corridor_telemetry)
+        + len(tank_telemetry)
     )
     print(f"\n{'=' * 60}")
     print(f"DONE. Total rows: {total_rows} | Issues injected: {len(ground_truth)}")

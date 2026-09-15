@@ -10,9 +10,40 @@
 
 import { cache } from "react";
 import { fetchAlerts, fetchQualitySummary, fetchRiskSummary, fetchTelemetrySummary, fetchBatches } from "./api";
+import type { Alert, DataQualitySummary, SiteRiskSummary, TelemetrySummary, IngestBatch } from "./types";
 
-export const cachedFetchAlerts          = cache(fetchAlerts);
-export const cachedFetchQualitySummary  = cache(fetchQualitySummary);
-export const cachedFetchRiskSummary     = cache(fetchRiskSummary);
-export const cachedFetchTelemetrySummary = cache(fetchTelemetrySummary);
-export const cachedFetchBatches         = cache(fetchBatches);
+// Test mode: return mock data when backend is down (TEMP - remove before prod)
+const TEST_MODE = process.env.NEXT_PUBLIC_TEST_MODE === "true";
+
+const MOCK_ALERTS: Alert[] = [];
+const MOCK_QUALITY_SUMMARY: DataQualitySummary = {
+  totalRecords: 0,
+  validRecords: 0,
+  invalidRecords: 0,
+  validationRate: 100,
+  lastUpdated: new Date().toISOString(),
+};
+const MOCK_RISK_SUMMARY: SiteRiskSummary[] = [];
+const MOCK_TELEMETRY_SUMMARY: TelemetrySummary = {
+  totalSites: 0,
+  activeSites: 0,
+  totalReadings: 0,
+  lastUpdated: new Date().toISOString(),
+};
+const MOCK_BATCHES: IngestBatch[] = [];
+
+async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  if (!TEST_MODE) return fn();
+  try {
+    return await fn();
+  } catch {
+    console.warn("[TEST_MODE] Backend unavailable, returning mock data");
+    return fallback;
+  }
+}
+
+export const cachedFetchAlerts          = cache(() => safeFetch(fetchAlerts, MOCK_ALERTS));
+export const cachedFetchQualitySummary  = cache(() => safeFetch(fetchQualitySummary, MOCK_QUALITY_SUMMARY));
+export const cachedFetchRiskSummary     = cache(() => safeFetch(fetchRiskSummary, MOCK_RISK_SUMMARY));
+export const cachedFetchTelemetrySummary = cache(() => safeFetch(fetchTelemetrySummary, MOCK_TELEMETRY_SUMMARY));
+export const cachedFetchBatches         = cache(() => safeFetch(fetchBatches, MOCK_BATCHES));
