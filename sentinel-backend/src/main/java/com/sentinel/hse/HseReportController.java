@@ -1,5 +1,7 @@
 package com.sentinel.hse;
 
+import com.sentinel.alert.AlertRepository;
+import com.sentinel.event.EventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -29,22 +31,73 @@ public class HseReportController {
     private final HseReportService    hseReportService;
     private final HseReportRepository hseReportRepository;
     private final EsgMetricExtractor  esgMetricExtractor;
+    private final AlertRepository     alertRepository;
+    private final EventRepository     eventRepository;
 
-    // ── Generate ──────────────────────────────────────────────────────────────
+    // ── Generate from event ───────────────────────────────────────────────────
 
     /**
      * POST /api/hse-reports/generate/{eventId}
-     *
-     * Generates an AI HSE report for the given event. If a DRAFT already exists
-     * for this event it is returned immediately (idempotent).
-     *
-     * Response: full HseReportEntity (status=DRAFT)
+     * Generates an AI HSE report for the given event. Idempotent — returns
+     * existing DRAFT if one already exists for this event.
      */
     @PostMapping("/generate/{eventId}")
     public ResponseEntity<HseReportEntity> generate(@PathVariable String eventId) {
         log.info("HseReportController: generate request for eventId={}", eventId);
         try {
             HseReportEntity report = hseReportService.generateReport(eventId);
+            return ResponseEntity.ok(report);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ── Generate from alert ───────────────────────────────────────────────────
+
+    /**
+     * POST /api/hse-reports/generate-from-alert/{alertId}
+     *
+     * Generates an AI HSE report from an alert ID. Finds the most recent
+     * event for the alert's site and uses that as the report source.
+     * This is the endpoint used by the embedded AI panel in the alert view.
+     */
+    @PostMapping("/generate-from-alert/{alertId}")
+    public ResponseEntity<HseReportEntity> generateFromAlert(@PathVariable String alertId) {
+        log.info("HseReportController: generate-from-alert request for alertId={}", alertId);
+
+        // Find the alert
+        var alertOpt = alertRepository.findById(alertId);
+        if (alertOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        var alert = alertOpt.get();
+
+        // Find the most recent event for this site
+        var events = eventRepository.findBySiteIdAndCreatedAtAfterOrderByCreatedAtDesc(
+            alert.getSiteId(),
+            java.time.LocalDateTime.now().minusDays(7)
+        );
+
+        if (events.isEmpty()) {
+            // No event found — create a synthetic event context using alert data
+            // Try to find any event for this site ever
+            var anyEvents = eventRepository.findBySiteIdAndCreatedAtAfterOrderByCreatedAtDesc(
+                alert.getSiteId(),
+                java.time.LocalDateTime.now().minusDays(90)
+            );
+            if (anyEvents.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            try {
+                HseReportEntity report = hseReportService.generateReport(anyEvents.get(0).getEventId());
+                return ResponseEntity.ok(report);
+            } catch (IllegalArgumentException ex) {
+                return ResponseEntity.notFound().build();
+            }
+        }
+
+        try {
+            HseReportEntity report = hseReportService.generateReport(events.get(0).getEventId());
             return ResponseEntity.ok(report);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
