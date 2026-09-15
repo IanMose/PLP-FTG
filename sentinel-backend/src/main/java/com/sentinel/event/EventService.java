@@ -2,6 +2,7 @@ package com.sentinel.event;
 
 import com.sentinel.actuation.ActuationService;
 import com.sentinel.alert.SlackNotificationService;
+import com.sentinel.alert.SmsNotificationService;
 import com.sentinel.telemetry.TankTelemetryEntity;
 import com.sentinel.telemetry.TankTelemetryRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class EventService {
     private final TankTelemetryRepository telemetryRepository;
     private final ActuationService actuationService;
     private final SlackNotificationService slackService;
+    private final SmsNotificationService smsService;
 
     // ── Detection Methods ──────────────────────────────────────────────────────
 
@@ -178,10 +180,12 @@ public class EventService {
             event.markActuationTriggered();
         }
         
-        // Step 2: Send Slack notification
-        boolean notificationSuccess = sendNotification(event, actuationResult);
+        // Step 2: Send Slack notification (and SMS for Critical)
+        NotificationResult notifResult = sendNotifications(event, actuationResult);
         result.setNotificationSent(true);
-        result.setNotificationSuccess(notificationSuccess);
+        result.setNotificationSuccess(notifResult.slackSuccess);
+        result.setSmsAttempted(notifResult.smsAttempted);
+        result.setSmsSuccess(notifResult.smsSuccess);
         event.markNotificationSent();
         
         // Step 3: Mark as processed
@@ -223,13 +227,39 @@ public class EventService {
     }
 
     /**
-     * Send Slack notification for an event via SlackNotificationService.
+     * Send notifications for an event via Slack and SMS (for Critical).
+     * Returns a result object with status of both channels.
      */
-    private boolean sendNotification(EventEntity event, ActuationService.ActuationResult actuationResult) {
-        log.info("Sending Slack notification for event {} - {} at {}", 
+    private NotificationResult sendNotifications(EventEntity event, ActuationService.ActuationResult actuationResult) {
+        log.info("Sending notifications for event {} - {} at {}", 
             event.getEventId(), event.getEventType(), event.getSiteId());
         
-        return slackService.sendOverfillAlert(event, actuationResult);
+        NotificationResult result = new NotificationResult();
+        
+        // Primary channel: Slack
+        result.slackSuccess = slackService.sendOverfillAlert(event, actuationResult);
+        
+        // Secondary channel: SMS for Critical events only
+        // SMS failure never affects Slack notification or alert processing
+        if ("Critical".equalsIgnoreCase(event.getSeverity())) {
+            result.smsAttempted = true;
+            result.smsSuccess = smsService.sendOverfillAlert(event, actuationResult);
+            if (!result.smsSuccess) {
+                log.warn("SMS notification failed for Critical event {} - Slack notification was {}", 
+                    event.getEventId(), result.slackSuccess ? "successful" : "also failed");
+            }
+        }
+        
+        return result;
+    }
+
+    /**
+     * Result of sending notifications through multiple channels.
+     */
+    private static class NotificationResult {
+        boolean slackSuccess = false;
+        boolean smsAttempted = false;
+        boolean smsSuccess = false;
     }
 
     // ── Query Methods ──────────────────────────────────────────────────────────
@@ -301,6 +331,8 @@ public class EventService {
         private int latencyMs;
         private boolean notificationSent;
         private boolean notificationSuccess;
+        private boolean smsAttempted;
+        private boolean smsSuccess;
         private boolean processed;
 
         public EventProcessingResult(String eventId) {

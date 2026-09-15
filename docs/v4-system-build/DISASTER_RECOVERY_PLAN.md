@@ -20,6 +20,7 @@ This document defines failure modes, detection methods, fallback behaviors, and 
 | **Render backend down** | UptimeRobot alert in Slack | N/A — service unavailable | Render dashboard → Manual Deploy from last good commit |
 | **Actuation endpoint unresponsive** | `POST /api/actuate/close-valve` returns 500 | Event still logs; dashboard still shows alert (Slack notification failure must never suppress alert) | Restart backend service via Render dashboard |
 | **Slack webhook down** | `SlackNotificationService` catches exception, logs warning (non-fatal) | Alert and actuation still fire; Slack failure is silent in UI | Check Render logs; reconfigure webhook URL in dashboard |
+| **SMS gateway down** | `SmsNotificationService` catches exception, logs warning (non-fatal) | Alert, actuation, and Slack still fire; SMS failure does not block processing | Check Africa's Talking dashboard; verify AT_API_KEY env var |
 | **PostgreSQL down** | All API endpoints return 500; health check fails | No fallback — DB is required | Render managed DB → restore from snapshot (RPO ≤ 24h) |
 | **Model artifact missing after restart** | `predict.py` logs warning, falls back to `logreg_v1.pkl` if present | Loads `artifact_blob` from DB if filesystem artifact missing | No action needed if `artifact_blob` populated; re-run `retrain.py` if not |
 | **ETL CI cron fails** | GitHub Actions job failure notification | Data goes stale; no new alerts generated | Investigate CI logs; re-run workflow manually |
@@ -73,6 +74,31 @@ openssl rand -base64 32
 # 1. Render dashboard: sentinel-backend → Environment → ETL_API_KEY
 # 2. GitHub: Settings → Secrets → Actions → ETL_API_KEY
 # Redeploy service
+```
+
+### 3.5 SMS (Africa's Talking) Configuration
+
+**API Key Rotation:**
+```bash
+# Generate new API key from Africa's Talking dashboard:
+# https://account.africastalking.com → API Key → Generate
+
+# Update in Render dashboard:
+# sentinel-backend → Environment → AT_API_KEY
+# Redeploy service
+```
+
+**SMS Contact Management:**
+```sql
+-- Add new on-call contact
+INSERT INTO sms_contacts (name, phone_number, role, active, min_severity)
+VALUES ('John Doe', '+254712345678', 'on_call', TRUE, 'Critical');
+
+-- Temporarily disable a contact
+UPDATE sms_contacts SET active = FALSE WHERE phone_number = '+254712345678';
+
+-- View active contacts
+SELECT name, phone_number, role FROM sms_contacts WHERE active = TRUE;
 ```
 
 ### 3.4 ETL Pipeline Recovery
@@ -142,6 +168,7 @@ When an incident occurs:
 | On-call engineer | (Configure in team wiki) |
 | Render support | https://render.com/support |
 | GitHub support | https://support.github.com |
+| Africa's Talking support | https://africastalking.com/contact |
 
 ---
 
@@ -153,5 +180,6 @@ Quarterly DR drills:
 2. **Database restore test:** Restore from snapshot to a test environment
 3. **Secret rotation test:** Rotate JWT_SECRET, verify tokens invalidate correctly
 4. **Monitoring test:** Temporarily break health endpoint, verify alert fires
+5. **SMS delivery test:** Send test SMS via `SmsNotificationService.sendTestNotification()`, verify delivery
 
 Document drill results in `docs/dr-drills/`.

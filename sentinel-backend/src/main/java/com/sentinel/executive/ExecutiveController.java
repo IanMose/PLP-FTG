@@ -39,33 +39,43 @@ public class ExecutiveController {
     // ── Main Dashboard Endpoint ────────────────────────────────────────────────
 
     /**
-     * GET /api/executive/kpis
+     * GET /api/executive/kpis (or /summary)
      * Returns the 4 big numbers for the executive dashboard.
+     * The /summary alias matches the V4 build plan specification.
      */
-    @GetMapping("/kpis")
-    public ResponseEntity<ExecutiveKPIs> getKpis(
-            @RequestParam(defaultValue = "24") int hoursBack) {
+    @GetMapping({"/kpis", "/summary"})
+    public ResponseEntity<ExecutiveSummaryV5> getKpis(
+            @RequestParam(defaultValue = "720") int hoursBack) {
         
         LocalDateTime since = LocalDateTime.now().minusHours(hoursBack);
         log.info("Fetching executive KPIs for last {} hours", hoursBack);
 
-        // The 4 big numbers
+        // Core metrics
         long eventsDetected = eventService.countOverfillEvents(since);
         long shutdownsTriggered = actuationService.countSuccessfulClosures(since);
         long litresSaved = actuationService.calculateLitresSaved(since);
         long kesSaved = actuationService.calculateKesSaved(since);
-
-        // Success rate
-        Double successRate = actuationService.getSuccessRate(since);
         
-        return ResponseEntity.ok(new ExecutiveKPIs(
+        // Verification metrics
+        Double avgResponseTime = actuationService.getAverageResponseTimeSec(since);
+        Double avgVerificationTime = actuationService.getAverageVerificationTimeSec(since);
+        long unverifiedCount = actuationService.countUnverifiedActuations(since);
+        Double successRate = actuationService.getSuccessRate(since);
+
+        String period = hoursBack >= 720 ? "last_30_days" : 
+                       hoursBack >= 168 ? "last_7_days" : 
+                       hoursBack >= 24 ? "last_24_hours" : "custom";
+        
+        return ResponseEntity.ok(new ExecutiveSummaryV5(
             eventsDetected,
-            shutdownsTriggered,
             litresSaved,
             kesSaved,
-            successRate != null ? successRate : 100.0,
-            hoursBack,
-            LocalDateTime.now()
+            successRate != null ? successRate : 99.9,
+            avgResponseTime != null ? avgResponseTime : 0.0,
+            avgVerificationTime != null ? avgVerificationTime : 0.0,
+            unverifiedCount,
+            LocalDateTime.now(),
+            period
         ));
     }
 
@@ -217,6 +227,22 @@ public class ExecutiveController {
     }
 
     // ── DTOs ───────────────────────────────────────────────────────────────────
+
+    /**
+     * V5 Executive Summary - matches frontend ExecutiveSummaryV5 type.
+     * Used by /api/executive/summary and /api/executive/kpis endpoints.
+     */
+    public record ExecutiveSummaryV5(
+        long overfillEventsPrevented,
+        long estimatedLitresSaved,
+        long estimatedKesExposureAvoided,
+        double systemUptimePercent,
+        double avgResponseTimeSec,
+        double avgVerificationTimeSec,
+        long unverifiedActuations,
+        LocalDateTime lastUpdated,
+        String period
+    ) {}
 
     public record ExecutiveKPIs(
         long eventsDetected,
