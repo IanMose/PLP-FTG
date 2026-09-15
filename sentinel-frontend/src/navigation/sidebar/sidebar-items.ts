@@ -19,6 +19,12 @@ import {
   AlertTriangle,
   TrendingDown,
   Timer,
+  Gauge,
+  Layers,
+  MonitorPlay,
+  ScrollText,
+  LayoutDashboard,
+  Zap,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -63,6 +69,62 @@ export interface NavGroup {
 }
 
 export const sidebarItems: NavGroup[] = [
+  // ── 0. Control Plane ─────────────────────────────────────────────────────────
+  {
+    id: 0,
+    label: "Control Plane",
+    items: [
+      {
+        id: "control-plane",
+        title: "Control Plane",
+        icon: Gauge,
+        subItems: [
+          {
+            id: "cp-tanks",
+            title: "Live Tank Monitor",
+            url: "/dashboard/control-plane/tanks",
+            icon: Gauge,
+            badge: "new",
+          },
+          {
+            id: "cp-interlocks",
+            title: "Interlock Center",
+            url: "/dashboard/control-plane/interlocks",
+            icon: Layers,
+            badge: "new",
+          },
+          {
+            id: "cp-demo",
+            title: "Control Room",
+            url: "/dashboard/control-plane/demo",
+            icon: MonitorPlay,
+            badge: "new",
+          },
+          {
+            id: "cp-audit",
+            title: "Audit Log",
+            url: "/dashboard/control-plane/audit-log",
+            icon: ScrollText,
+          },
+        ],
+      },
+      {
+        id: "executive",
+        title: "Executive Dashboard",
+        url: "/dashboard/executive",
+        icon: LayoutDashboard,
+        badge: "new",
+      },
+      {
+        id: "live-demo",
+        title: "Live Demo",
+        url: "/dashboard/demo",
+        icon: Zap,
+        roles: ["Admin", "ML Admin"],
+        badge: "new",
+      },
+    ],
+  },
   // ── 1. Command Center ───────────────────────────────────────────────────────
   {
     id: 1,

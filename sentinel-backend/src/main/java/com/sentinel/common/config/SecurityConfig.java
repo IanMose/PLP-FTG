@@ -21,7 +21,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.sentinel.common.security.JwtAuthFilter;
-import com.sentinel.common.security.ServiceTokenFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -29,14 +28,12 @@ import com.sentinel.common.security.ServiceTokenFilter;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
-    private final ServiceTokenFilter serviceTokenFilter;
 
     @Value("${sentinel.cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, ServiceTokenFilter serviceTokenFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
-        this.serviceTokenFilter = serviceTokenFilter;
     }
 
     @Bean
@@ -49,15 +46,13 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-ETL-Api-Key", "X-Service-Token"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-ETL-Api-Key"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
-        // WebSocket handshake goes through the same CORS filter
-        source.registerCorsConfiguration("/ws/**", config);
         return source;
     }
 
@@ -75,8 +70,7 @@ public class SecurityConfig {
                     "/h2-console/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
-                    "/api/data/ingest",        // ETL push — authenticated via X-ETL-Api-Key header
-                    "/ws/**"                   // WebSocket handshake — auth handled at app level
+                    "/api/data/ingest"         // ETL push — authenticated via X-ETL-Api-Key header
                 ).permitAll()
                 // Read-only dashboard endpoints — no auth required
                 // (alerts, risk heatmap, corridor, sites, quality, telemetry, ingestion, analytics)
@@ -116,7 +110,6 @@ public class SecurityConfig {
                 // Everything else (POST /api/alerts/{id}/ack, etc.) requires auth
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(serviceTokenFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             // Allow H2 console frames in dev
             .headers(h -> h.frameOptions(f -> f.sameOrigin()));

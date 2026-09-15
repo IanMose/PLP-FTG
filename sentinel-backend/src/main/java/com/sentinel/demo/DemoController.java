@@ -7,7 +7,6 @@ import com.sentinel.telemetry.TankTelemetryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -50,10 +49,8 @@ public class DemoController {
      * 
      * The money endpoint - triggers the full detect → act → notify loop.
      * Judge presses button, watches magic happen.
-     * Requires ADMIN role to prevent unauthorized demo triggers.
      */
     @PostMapping("/trigger-overfill")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HSE_MANAGER')")
     public ResponseEntity<DemoResult> triggerOverfill(@RequestBody(required = false) DemoRequest request) {
         String siteId = request != null && request.siteId() != null ? request.siteId() : DEMO_SITE;
         String tankId = request != null && request.tankId() != null ? request.tankId() : DEMO_TANK;
@@ -153,10 +150,8 @@ public class DemoController {
     /**
      * POST /api/demo/trigger-critical
      * Trigger a critical-level overfill (98%+) for maximum drama.
-     * Requires ADMIN role.
      */
     @PostMapping("/trigger-critical")
-    @PreAuthorize("hasAnyRole('ADMIN', 'HSE_MANAGER')")
     public ResponseEntity<DemoResult> triggerCritical() {
         DemoRequest request = new DemoRequest(DEMO_SITE, DEMO_TANK, new BigDecimal("98.7"));
         return triggerOverfill(request);
@@ -165,10 +160,8 @@ public class DemoController {
     /**
      * POST /api/demo/reset
      * Clear demo data for a fresh run.
-     * Requires ADMIN role.
      */
     @PostMapping("/reset")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> resetDemo() {
         log.info("Demo reset requested");
         // In a real implementation, this would clear demo-specific data

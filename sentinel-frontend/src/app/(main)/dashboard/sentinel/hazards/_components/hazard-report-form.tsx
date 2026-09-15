@@ -22,6 +22,8 @@ const SITES = [
   { id: "site-007", name: "Kisumu Terminal" },
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
+
 export function HazardReportForm() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -38,7 +40,7 @@ export function HazardReportForm() {
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/proxy/hazard-reports', {
+      const res = await fetch("/api/proxy/hazards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

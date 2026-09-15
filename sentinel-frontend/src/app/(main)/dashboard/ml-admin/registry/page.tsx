@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle, XCircle, RotateCcw, GitCompare } from "lucide-react";
 import { toast } from "sonner";
@@ -126,22 +127,19 @@ function FeatureImportanceDiff({ diff }: { diff: FeatureImportanceDiffEntry[] })
 }
 
 export default function ModelRegistryPage() {
-  const [models, setModels] = useState<any[]>([]);
+  const qc = useQueryClient();
   const [comparison, setComparison] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
 
-  const load = () => {
-    fetch('/api/proxy/ml/model-registry')
-      .then((r) => r.json())
-      .then((data) => {
-        // Handle both array response and object with nested array
-        const list = Array.isArray(data) ? data : (data?.models ?? data?.data ?? []);
-        setModels(list);
-      })
-      .catch(() => setModels([]));
-  };
+  const { data: rawData } = useQuery<any>({
+    queryKey: ["model-registry"],
+    queryFn: () => fetch("/api/proxy/ml/model-registry").then((r) => r.json()),
+    staleTime: 30_000,
+  });
+  const models: any[] = Array.isArray(rawData) ? rawData : (rawData?.models ?? rawData?.data ?? []);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["model-registry"] });
 
   const loadComparison = async () => {
     try {
@@ -153,49 +151,45 @@ export default function ModelRegistryPage() {
     }
   };
 
-  useEffect(load, []);
+  const promoteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/proxy/ml/model-registry/${id}/promote`, { method: "PATCH" }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
+    onSuccess: () => { toast.success("Model promoted to champion."); invalidate(); },
+    onError: (e: Error) => toast.error(`Promote failed: ${e.message}`),
+  });
 
-  const promote = async (id: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/proxy/ml/model-registry/${id}/promote`, {
-        method: "PATCH",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success("Model promoted to champion. Live predictions will update on the next pipeline run.");
-      load();
-    } catch (e: any) { toast.error(`Promote failed: ${e.message}`); }
-    finally { setLoading(false); }
-  };
+  const rollbackMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/proxy/ml/model-registry/${id}/rollback`, { method: "PATCH" }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
+    onSuccess: () => { toast.success("Rolled back to previous champion."); invalidate(); },
+    onError: (e: Error) => toast.error(`Rollback failed: ${e.message}`),
+  });
 
-  const rollback = async (id: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/proxy/ml/model-registry/${id}/rollback`, {
-        method: "PATCH",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success("Rolled back to previous champion.");
-      load();
-    } catch (e: any) { toast.error(`Rollback failed: ${e.message}`); }
-    finally { setLoading(false); }
-  };
-
-  const reject = async (id: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/proxy/ml/model-registry/${id}/reject`, {
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      fetch(`/api/proxy/ml/model-registry/${id}/reject`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: rejectNote }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success("Model rejected.");
-      setRejectNote("");
-      load();
-    } catch (e: any) { toast.error(`Reject failed: ${e.message}`); }
-    finally { setLoading(false); }
-  };
+        body: JSON.stringify({ notes }),
+      }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
+    onSuccess: () => { toast.success("Model rejected."); setRejectNote(""); invalidate(); },
+    onError: (e: Error) => toast.error(`Reject failed: ${e.message}`),
+  });
+
+  const loading = promoteMutation.isPending || rollbackMutation.isPending || rejectMutation.isPending;
+
+  const promote = (id: string) => promoteMutation.mutate(id);
+  const rollback = (id: string) => rollbackMutation.mutate(id);
+  const reject = (id: string) => rejectMutation.mutate({ id, notes: rejectNote });
 
   const champion  = models.find((m) => m.status === "champion");
   const challenger = models.find((m) => m.status === "challenger");

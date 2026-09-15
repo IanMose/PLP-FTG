@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { RiskRatingBadge } from "../../_components/risk-rating-badge";
 
+const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
+
 export function RiskAssessmentForm({ hazardId }: { hazardId: string }) {
   const router = useRouter();
   const [likelihood, setLikelihood] = useState(3);
@@ -21,7 +23,7 @@ export function RiskAssessmentForm({ hazardId }: { hazardId: string }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/proxy/hazard-reports/${hazardId}/risk-assessment`, {
+      const res = await fetch(`/api/proxy/hazards/${hazardId}/risk-assessment`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ likelihoodRating: likelihood, severityRating: severity, mitigationNote }),

@@ -3,7 +3,6 @@ package com.sentinel.actuation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -28,10 +27,8 @@ public class ActuationController {
     /**
      * POST /api/actuate/close-valve
      * Manually close a valve for a specific tank.
-     * Requires OPERATOR, HSE_OFFICER, or ADMIN role.
      */
     @PostMapping("/close-valve")
-    @PreAuthorize("hasAnyRole('OPERATOR', 'HSE_OFFICER', 'HSE_MANAGER', 'ADMIN')")
     public ResponseEntity<ActuationResponse> closeValve(@RequestBody CloseValveRequest request) {
         log.info("Manual valve close request for tank {} at {} by {}", 
             request.tankId(), request.siteId(), request.triggeredBy());
@@ -48,10 +45,8 @@ public class ActuationController {
     /**
      * POST /api/actuate/emergency-stop
      * Emergency stop - highest priority valve closure.
-     * Requires OPERATOR, HSE_OFFICER, or ADMIN role.
      */
     @PostMapping("/emergency-stop")
-    @PreAuthorize("hasAnyRole('OPERATOR', 'HSE_OFFICER', 'HSE_MANAGER', 'ADMIN')")
     public ResponseEntity<ActuationResponse> emergencyStop(@RequestBody CloseValveRequest request) {
         log.warn("EMERGENCY STOP request for tank {} at {} by {}", 
             request.tankId(), request.siteId(), request.triggeredBy());

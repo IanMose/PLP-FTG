@@ -50,10 +50,10 @@ services:
           property: password
 
       # ── Security ─────────────────────────────────────────────────────────
-      # Set these values in Render dashboard, not in this file.
-      # Generate with: openssl rand -base64 48
+      # IMPORTANT: replace this placeholder with a real secret before deploying.
+      # Generate one with: openssl rand -base64 48
       - key: JWT_SECRET
-        sync: false   # Value is set in Render dashboard, never committed
+        value: REPLACE_WITH_STRONG_RANDOM_KEY   # openssl rand -base64 48
 
       # ── CORS — add your Render frontend URL once it is deployed ──────────
       # Example: https://sentinel-frontend.onrender.com
@@ -68,8 +68,4 @@ services:
       # Generate with: openssl rand -base64 32
       # Set the same value in GitHub → Settings → Secrets → Actions → ETL_API_KEY
       - key: ETL_API_KEY
-        sync: false   # Value is set in Render dashboard, never committed
-
-      # ── Tank Telemetry Feature Flag ──────────────────────────────────────
-      - key: TANK_TELEMETRY_ENABLED
-        value: "false"   # Change to "true" once Phase 3 tank pipeline is stable
+        value: REPLACE_WITH_STRONG_RANDOM_KEY   # openssl rand -base64 32

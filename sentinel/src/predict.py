@@ -1,50 +1,52 @@
 """
 Sentinel — Predictive Model (Stage B)
 ======================================
-Trains a logistic regression classifier that outputs the probability of a
-Critical incident occurring at a site within the next 7 days.
+Trains a classifier that outputs the probability of a Critical incident
+occurring at a site within the next 7 days.
+
+Model Selection:
+    Trains both LogisticRegression and XGBoost, selects the one with higher
+    test AUC (unless --force-logreg or --force-xgb is specified).
+
+Calibration:
+    The winning model is calibrated using CalibratedClassifierCV (sigmoid
+    method) so that predicted probabilities match empirical frequencies.
+
+Explainability:
+    Feature attributions are computed via SHAP (LinearExplainer for logistic,
+    TreeExplainer for XGBoost) and exported in the top_features field.
+
+Quality Gate:
+    Training refuses to save if test AUC falls below MIN_ACCEPTABLE_AUC.
+    This prevents regressions when experimenting with features or algorithms.
+
+Model Registry:
+    Each training run produces a versioned artifact (timestamp_gitsha.pkl).
+    Use --list-versions to see history, --rollback VERSION to restore.
 
 Label definition:
     label = 1  if ANY incident with severity == 'Critical' exists for that
                site_id in (as_of_date, as_of_date + 7 days]
     label = 0  otherwise
 
-Why 7-day window instead of the plan's 30-day?
-    The raw data has ~6 181 incidents with 2 449 High/Critical spread across
-    6 sites over 3+ years. A 30-day forward window yields a 97.5% positive rate
-    (every site has an H/C incident somewhere in the next 30 days). That gives a
-    trivial model that always predicts 1.  A 7-day Critical-only window yields
-    51% positive overall — nearly balanced — with strong site differentiation:
-    SITE-003=92%, SITE-006=75% vs SITE-004=27%, SITE-001=34%.
-    This is documented in backtest_report.json as label_definition.
-
 Time split:
-    train: as_of_date < 2026-06-12   (~2/3 of the 180-day window, 714 rows)
-    test:  as_of_date >= 2026-06-12  (~1/3, 366 rows)
+    train: as_of_date < 2026-06-12   (~2/3 of the 180-day window)
+    test:  as_of_date >= 2026-06-12  (~1/3)
     Never shuffle before splitting — forward simulation of real deployment.
-
-Missing value imputation:
-    days_since_last_audit: NULL → 999 (sentinel for "never audited")
-    All other feature columns are fully populated by Stage A.
-
-V4 Changes:
-    - Champion model loaded from model_registry API (falls back to local pkl)
-    - Predictions written directly to PostgreSQL via psycopg2
-    - No predictions_export.json output
 
 Usage:
     python -m src.predict                    # train + score (default)
     python -m src.predict --train            # rebuild model from scratch
     python -m src.predict --score            # score using existing pkl
+    python -m src.predict --list-versions    # show model registry
+    python -m src.predict --rollback VER     # restore previous version
+    python -m src.predict --force-logreg     # skip XGBoost comparison
+    python -m src.predict --force-xgb        # skip LogisticRegression comparison
 """
 
 import argparse
-import base64
 import json
-import logging
-import os
 import re
-import tempfile
 import warnings
 from datetime import date
 from pathlib import Path
@@ -52,13 +54,15 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-import requests
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
-log = logging.getLogger(__name__)
+from src.model_registry import ModelRegistry
+from src.explainability import explain_predictions
 
 # ── Config ───────────────────────────────────────────────────────────────────
 FEATURES = [
@@ -72,11 +76,7 @@ FEATURES = [
 ]
 
 MODEL_VERSION = "logreg_v1"
-FALLBACK_MODEL_PATH = Path("models/logreg_v1.pkl")
-
-# V4: API configuration for champion model loading
-API_BASE = os.environ.get("API_BASE", "http://localhost:8080")
-SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "")
+MODEL_PATH = Path("models/logreg_v1.pkl")
 
 # Label: any Critical incident in next N days
 LABEL_DAYS = 7
@@ -88,64 +88,15 @@ NULL_AUDIT_SENTINEL = 999
 # Time split cutoff — day 120 of the 180-day window
 TRAIN_CUTOFF = date(2026, 6, 12)
 
+# Quality gate — model must exceed this AUC to be saved
+# Set conservatively below current baseline to catch regressions, not block incremental work
+MIN_ACCEPTABLE_AUC = 0.55
+
+# Registry for versioned model persistence
+_registry = ModelRegistry(models_dir=Path("models"))
+
 RAW_DIR = Path("data/raw")
 WAREHOUSE_DIR = Path("data/warehouse")
-
-
-# ── V4: Champion Model Loading ────────────────────────────────────────────────
-
-def load_champion_model():
-    """
-    Load the current champion model from model_registry API.
-    Falls back to FALLBACK_MODEL_PATH if the API is unreachable.
-
-    Returns: (pipeline, version_string)
-    """
-    try:
-        resp = requests.get(
-            f"{API_BASE}/api/ml/model-registry",
-            headers={"X-Service-Token": SERVICE_TOKEN},
-            timeout=5,
-        )
-        resp.raise_for_status()
-        registry = resp.json()
-        champion = next((m for m in registry if m.get("status") == "champion"), None)
-        if champion is None:
-            raise ValueError("No champion found in registry")
-
-        artifact_path = Path(champion.get("artifactPath", ""))
-
-        # If artifact file exists locally, use it
-        if artifact_path.exists():
-            log.info("Loading champion from local artifact: %s", artifact_path)
-            return joblib.load(artifact_path), champion["version"]
-
-        # Otherwise, try artifact_blob (base64-encoded PKL stored in DB)
-        blob = champion.get("artifactBlob")
-        if blob:
-            log.info("Loading champion from artifactBlob (version=%s)", champion["version"])
-            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as f:
-                f.write(base64.b64decode(blob))
-                tmp_path = f.name
-            model = joblib.load(tmp_path)
-            Path(tmp_path).unlink(missing_ok=True)
-            return model, champion["version"]
-
-        raise FileNotFoundError(
-            f"Champion artifact not found at {artifact_path} and no blob available"
-        )
-
-    except Exception as e:
-        log.warning(
-            "Could not load champion from registry (%s) — falling back to %s",
-            e, FALLBACK_MODEL_PATH
-        )
-        if not FALLBACK_MODEL_PATH.exists():
-            raise FileNotFoundError(
-                f"Fallback model not found at {FALLBACK_MODEL_PATH}. "
-                "Run 'python -m src.predict --train' to train first."
-            )
-        return joblib.load(FALLBACK_MODEL_PATH), MODEL_VERSION
 
 
 # ── Label construction ────────────────────────────────────────────────────────
@@ -217,6 +168,30 @@ def build_labels(features_df: pd.DataFrame, raw_dir: Path = RAW_DIR) -> pd.DataF
 
 # ── Training ──────────────────────────────────────────────────────────────────
 
+class _CalibratedPipelineWrapper:
+    """
+    Wrapper to make CalibratedClassifierCV behave like a Pipeline.
+    
+    This preserves access to the underlying model's named_steps for
+    explainability while using calibrated probabilities for predictions.
+    """
+    
+    def __init__(self, base_pipe: Pipeline, calibrated):
+        self.base_pipe = base_pipe
+        self.calibrated = calibrated
+        self.named_steps = base_pipe.named_steps
+        self.steps = base_pipe.steps
+    
+    def predict(self, X):
+        return self.calibrated.predict(X)
+    
+    def predict_proba(self, X):
+        return self.calibrated.predict_proba(X)
+    
+    def transform(self, X):
+        return self.base_pipe.transform(X)
+
+
 def _impute(df: pd.DataFrame) -> pd.DataFrame:
     """Fill NULL days_since_last_audit with the sentinel value 999."""
     out = df.copy()
@@ -227,13 +202,17 @@ def _impute(df: pd.DataFrame) -> pd.DataFrame:
 def train_model(
     features_with_labels: pd.DataFrame,
     cutoff: date = TRAIN_CUTOFF,
+    force_model: str = None,  # "logreg", "xgb", or None for auto-select
 ) -> tuple:
     """
-    Time-split train/test. Fit a Pipeline(StandardScaler + LogisticRegression).
+    Time-split train/test. Trains both LogisticRegression and XGBoost,
+    selects the one with higher test AUC (unless force_model is set).
 
     Returns:
         (fitted_pipeline, backtest_report_dict)
     """
+    from xgboost import XGBClassifier
+    
     df = _impute(features_with_labels)
     df["as_of_date"] = pd.to_datetime(df["as_of_date"])
     cutoff_ts = pd.Timestamp(cutoff)
@@ -246,22 +225,94 @@ def train_model(
     X_test  = test_df[FEATURES].values
     y_test  = test_df["label"].values
 
-    pipe = Pipeline([
+    # Build candidate pipelines
+    logreg_pipe = Pipeline([
         ("scaler", StandardScaler()),
-        ("clf",    LogisticRegression(
+        ("clf", LogisticRegression(
             class_weight="balanced",
             max_iter=1000,
             random_state=42,
             solver="lbfgs",
         )),
     ])
-
+    
+    # XGBoost doesn't need scaling, but we use a passthrough for consistency
+    xgb_pipe = Pipeline([
+        ("clf", XGBClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.1,
+            scale_pos_weight=(y_train == 0).sum() / max((y_train == 1).sum(), 1),
+            random_state=42,
+            eval_metric="logloss",
+        )),
+    ])
+    
+    candidates = {}
+    
+    # Train LogisticRegression
+    if force_model != "xgb":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            logreg_pipe.fit(X_train, y_train)
+        logreg_auc = roc_auc_score(y_test, logreg_pipe.predict_proba(X_test)[:, 1])
+        candidates["logreg"] = (logreg_pipe, logreg_auc)
+        print(f"  LogisticRegression AUC: {logreg_auc:.4f}")
+    
+    # Train XGBoost
+    if force_model != "logreg":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            xgb_pipe.fit(X_train, y_train)
+        xgb_auc = roc_auc_score(y_test, xgb_pipe.predict_proba(X_test)[:, 1])
+        candidates["xgb"] = (xgb_pipe, xgb_auc)
+        print(f"  XGBClassifier AUC:      {xgb_auc:.4f}")
+    
+    # Select winner
+    if force_model:
+        winner_name = force_model
+        pipe, _ = candidates[force_model]
+        print(f"  Forced selection: {force_model}")
+    else:
+        winner_name = max(candidates, key=lambda k: candidates[k][1])
+        pipe, _ = candidates[winner_name]
+        print(f"  Selected: {winner_name} (higher AUC)")
+    
+    # Generate report for the winner (before calibration for fair comparison)
+    report = evaluate_model(pipe, X_test, y_test, train_df, test_df)
+    report["model_type"] = winner_name
+    report["comparison"] = {
+        name: {"auc_roc": round(auc, 4)} 
+        for name, (_, auc) in candidates.items()
+    }
+    
+    # Calibrate the winning model
+    # Use a held-out portion of training data for calibration
+    # to avoid optimistic bias
+    cal_size = min(100, len(X_train) // 5)
+    X_cal, y_cal = X_train[-cal_size:], y_train[-cal_size:]
+    X_train_main, y_train_main = X_train[:-cal_size], y_train[:-cal_size]
+    
+    # Re-fit on main training set (smaller)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        pipe.fit(X_train, y_train)
-
-    report = evaluate_model(pipe, X_test, y_test, train_df, test_df)
-    return pipe, report
+        pipe.fit(X_train_main, y_train_main)
+    
+    # Calibrate using CalibratedClassifierCV with FrozenEstimator (sklearn 1.9+)
+    frozen_pipe = FrozenEstimator(pipe)
+    calibrated_pipe = CalibratedClassifierCV(frozen_pipe, method="sigmoid")
+    calibrated_pipe.fit(X_cal, y_cal)
+    
+    print(f"  Calibration: applied (sigmoid method, {cal_size} samples)")
+    
+    # Wrap in a Pipeline-like interface for compatibility
+    final_pipe = _CalibratedPipelineWrapper(pipe, calibrated_pipe)
+    
+    report["calibrated"] = True
+    report["calibration_method"] = "sigmoid"
+    report["calibration_samples"] = cal_size
+    
+    return final_pipe, report
 
 
 def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.DataFrame) -> dict:
@@ -269,29 +320,57 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
     y_pred = pipe.predict(X_test)
     y_prob = pipe.predict_proba(X_test)[:, 1]
 
+    # AUC-ROC for quality gating
+    try:
+        auc = float(roc_auc_score(y_test, y_prob))
+    except ValueError:
+        # Happens if y_test has only one class
+        auc = 0.0
+
     prec   = float(precision_score(y_test, y_pred, zero_division=0))
     rec    = float(recall_score(y_test, y_pred, zero_division=0))
     f1     = float(f1_score(y_test, y_pred, zero_division=0))
 
-    # Feature importances from standardised logistic coefficients
-    scaler = pipe.named_steps["scaler"]
-    clf    = pipe.named_steps["clf"]
-    raw_coef = clf.coef_[0]
-    std_coef = np.abs(raw_coef) * scaler.scale_  # unstandardise for magnitude
-    importances = std_coef / std_coef.sum() if std_coef.sum() > 0 else std_coef
-
-    feat_importance = [
-        {
-            "name": name,
-            "importance": round(float(imp), 4),
-            "direction": "positive" if coef > 0 else "negative",
-            "coefficient": round(float(coef), 4),
-        }
-        for name, imp, coef in sorted(
-            zip(FEATURES, importances, raw_coef),
-            key=lambda x: -x[1],
-        )
-    ]
+    # Feature importances — handle both linear and tree models
+    clf = pipe.steps[-1][1]
+    clf_name = type(clf).__name__.lower()
+    
+    if "logistic" in clf_name or "linear" in clf_name:
+        scaler = pipe.named_steps.get("scaler")
+        raw_coef = clf.coef_[0]
+        if scaler is not None:
+            std_coef = np.abs(raw_coef) * scaler.scale_
+        else:
+            std_coef = np.abs(raw_coef)
+        importances = std_coef / std_coef.sum() if std_coef.sum() > 0 else std_coef
+        
+        feat_importance = [
+            {
+                "name": name,
+                "importance": round(float(imp), 4),
+                "direction": "positive" if coef > 0 else "negative",
+                "coefficient": round(float(coef), 4),
+            }
+            for name, imp, coef in sorted(
+                zip(FEATURES, importances, raw_coef),
+                key=lambda x: -x[1],
+            )
+        ]
+    else:
+        # Tree-based model — use feature_importances_
+        importances = clf.feature_importances_
+        feat_importance = [
+            {
+                "name": name,
+                "importance": round(float(imp), 4),
+                "direction": "N/A",  # Tree importances don't have direction
+                "coefficient": None,
+            }
+            for name, imp in sorted(
+                zip(FEATURES, importances),
+                key=lambda x: -x[1],
+            )
+        ]
 
     report = {
         "model_version":        MODEL_VERSION,
@@ -308,6 +387,7 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
         "precision":            round(prec, 4),
         "recall":               round(rec, 4),
         "f1":                   round(f1, 4),
+        "auc_roc":              round(auc, 4),
         "feature_importances":  feat_importance,
         "classification_report": classification_report(y_test, y_pred, output_dict=True),
     }
@@ -316,15 +396,47 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-def save_model(pipe, path: Path = FALLBACK_MODEL_PATH):
+def save_model(pipe, report: dict, path: Path = MODEL_PATH) -> str:
+    """
+    Save model to the registry (versioned) and also to the legacy path for
+    backward compatibility.
+    
+    Returns the version_id of the saved model.
+    """
+    # Save to versioned registry
+    version_id = _registry.save(pipe, report)
+    
+    # Also save to legacy path for backward compatibility
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipe, path)
+    
+    return version_id
 
 
-def load_model(path: Path = FALLBACK_MODEL_PATH):
+def load_model(path: Path = MODEL_PATH, version_id: str = None):
+    """
+    Load model from registry (preferred) or legacy path (fallback).
+    
+    Args:
+        path: Legacy path (used if version_id is None and registry has no current)
+        version_id: Specific version to load (optional)
+    
+    Returns:
+        Fitted sklearn Pipeline
+    """
+    if version_id is not None:
+        return _registry.load(version_id)
+    
+    # Try registry first
+    try:
+        return _registry.load_current()
+    except FileNotFoundError:
+        pass
+    
+    # Fall back to legacy path
     if not path.exists():
         raise FileNotFoundError(
-            f"Model artifact not found at {path}. "
+            f"Model artifact not found. "
             "Run 'python -m src.predict --train' to train first."
         )
     return joblib.load(path)
@@ -332,12 +444,12 @@ def load_model(path: Path = FALLBACK_MODEL_PATH):
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
-def score_current_sites(features_df: pd.DataFrame, pipe, model_version: str = MODEL_VERSION) -> pd.DataFrame:
+def score_current_sites(features_df: pd.DataFrame, pipe) -> pd.DataFrame:
     """
     Score the most recent as_of_date row for each site.
 
     Returns a DataFrame with columns:
-        site_id, as_of_date, probability, model_version, top_features
+        site_id, as_of_date, incident_probability_7d, model_version, top_features
     """
     df = _impute(features_df.copy())
     df["as_of_date"] = pd.to_datetime(df["as_of_date"])
@@ -348,87 +460,35 @@ def score_current_sites(features_df: pd.DataFrame, pipe, model_version: str = MO
     X = latest[FEATURES].values
     probs = pipe.predict_proba(X)[:, 1]
 
-    # Per-prediction top-3 contributing features
-    scaler = pipe.named_steps["scaler"]
-    clf    = pipe.named_steps["clf"]
-    X_scaled = scaler.transform(X)
-    contributions = X_scaled * clf.coef_[0]  # shape: (n_sites, n_features)
-
-    top_features_list = []
-    for contribs in contributions:
-        top3_idx = np.argsort(np.abs(contribs))[::-1][:3]
-        top3 = [
-            {"feature": FEATURES[i], "contribution": round(float(contribs[i]), 4)}
-            for i in top3_idx
-        ]
-        top_features_list.append(json.dumps(top3))
+    # Per-prediction top-3 contributing features via SHAP
+    explanations = explain_predictions(pipe, X, FEATURES, top_k=3)
+    
+    top_features_list = [json.dumps(exp) for exp in explanations]
 
     result = latest[["site_id", "as_of_date"]].copy()
-    result["probability"]    = np.round(probs, 4)
-    result["model_version"]  = model_version
-    result["top_features"]   = top_features_list
+    result["incident_probability_7d"]  = np.round(probs, 4)
+    result["model_version"]            = MODEL_VERSION
+    result["top_features"]             = top_features_list
     result = result.reset_index(drop=True)
     return result
 
 
-# ── V4: Write Predictions to PostgreSQL ───────────────────────────────────────
-
-def write_predictions_to_db(preds_df: pd.DataFrame) -> int:
-    """
-    Write predictions directly to PostgreSQL fact_predictions table.
-    Returns the number of rows written.
-    """
-    if preds_df is None or preds_df.empty:
-        return 0
-
-    try:
-        from src.db import get_connection, execute_batch
-    except ImportError:
-        log.warning("psycopg2 not available, skipping PostgreSQL write for predictions")
-        return 0
-
-    SQL = """
-        INSERT INTO fact_predictions
-            (site_id, as_of_date, probability, model_version, top_features, created_at)
-        VALUES (%s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (site_id, as_of_date) DO NOTHING
-    """
-
-    rows = []
-    for row in preds_df.itertuples():
-        rows.append((
-            row.site_id.lower(),
-            row.as_of_date,
-            float(row.probability),
-            row.model_version,
-            row.top_features,
-        ))
-
-    try:
-        with get_connection() as conn:
-            count = execute_batch(conn, SQL, rows)
-        log.info("write_predictions_to_db: inserted %d rows", count)
-        return count
-    except Exception as e:
-        log.error("write_predictions_to_db failed: %s", e)
-        return 0
-
-
-# ── JSON sidecar for backend (legacy, kept for local dev) ─────────────────────
+# ── JSON sidecar for backend ──────────────────────────────────────────────────
 
 def write_predictions_json(preds_df: pd.DataFrame, output_dir: Path = WAREHOUSE_DIR):
     """
     Write predictions_export.json alongside the parquet file.
-    NOTE: V4 writes directly to PostgreSQL. This is kept for local dev convenience.
+    The Spring Boot EtlReloadService reads this to upsert predictions into
+    the fact_predictions DB table (avoids a Java Parquet dependency).
     """
     records = []
     for _, row in preds_df.iterrows():
         records.append({
-            "site_id":     row["site_id"],
-            "as_of_date":  str(row["as_of_date"])[:10],
-            "probability": float(row["probability"]),
-            "model_version": row["model_version"],
-            "top_features":  row["top_features"],
+            "site_id":                row["site_id"],
+            "as_of_date":             str(row["as_of_date"])[:10],
+            "incident_probability_7d": float(row["incident_probability_7d"]),
+            "model_version":          row["model_version"],
+            "top_features":           row["top_features"],
         })
     path = output_dir / "predictions_export.json"
     path.write_text(json.dumps(records, indent=2))
@@ -461,7 +521,7 @@ def main():
     )
     parser.add_argument(
         "--score", action="store_true",
-        help="Load champion model, score current features, write to PostgreSQL"
+        help="Load existing pkl, score current features, write fact_predictions.parquet"
     )
     parser.add_argument(
         "--features-path", type=str,
@@ -477,12 +537,42 @@ def main():
         help="Warehouse output directory"
     )
     parser.add_argument(
-        "--write-json", action="store_true",
-        help="Also write predictions_export.json (legacy, for local dev)"
+        "--rollback", type=str, metavar="VERSION",
+        help="Roll back to a specific model version (use --list-versions to see available)"
+    )
+    parser.add_argument(
+        "--list-versions", action="store_true",
+        help="List all available model versions in the registry"
+    )
+    parser.add_argument(
+        "--force-logreg", action="store_true",
+        help="Force use of LogisticRegression (skip XGBoost comparison)"
+    )
+    parser.add_argument(
+        "--force-xgb", action="store_true",
+        help="Force use of XGBoost (skip LogisticRegression comparison)"
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    # Handle registry commands
+    if args.list_versions:
+        versions = _registry.list_versions()
+        current = _registry.get_current_version()
+        print(f"\nModel Registry ({len(versions)} versions):")
+        for v in sorted(versions, reverse=True):
+            meta = _registry.get_metadata(v)
+            marker = " [CURRENT]" if v == current else ""
+            print(f"  {v}{marker}  AUC={meta.get('auc_roc', 'N/A')}")
+        raise SystemExit(0)
+    
+    if args.rollback:
+        try:
+            _registry.set_current(args.rollback)
+            print(f"Rolled back to model version: {args.rollback}")
+            raise SystemExit(0)
+        except FileNotFoundError as e:
+            print(f"ERROR: {e}")
+            raise SystemExit(1)
 
     # Default: do both if neither flag given
     do_train = args.train or (not args.train and not args.score)
@@ -507,8 +597,14 @@ def main():
         print(f"  Label positive rate: {pos_rate:.3f}  "
               f"({features_with_labels['label'].sum()} of {len(features_with_labels)} rows)")
 
-        print("[TRAIN] Fitting LogisticRegression (balanced, time-split)...")
-        pipe, report = train_model(features_with_labels, TRAIN_CUTOFF)
+        print("[TRAIN] Fitting model (head-to-head comparison)...")
+        force_model = None
+        if args.force_logreg:
+            force_model = "logreg"
+        elif args.force_xgb:
+            force_model = "xgb"
+        
+        pipe, report = train_model(features_with_labels, TRAIN_CUTOFF, force_model=force_model)
 
         print(f"  Train: {report['n_train']} rows  pos={report['positive_rate_train']:.3f}")
         print(f"  Test:  {report['n_test']} rows  pos={report['positive_rate_test']:.3f}")
@@ -516,8 +612,16 @@ def main():
         print(f"  Recall:    {report['recall']:.3f}")
         print(f"  F1:        {report['f1']:.3f}")
 
-        save_model(pipe, FALLBACK_MODEL_PATH)
-        print(f"  Model saved → {FALLBACK_MODEL_PATH}")
+        # Quality gate — refuse to save model if AUC below threshold
+        if report["auc_roc"] < MIN_ACCEPTABLE_AUC:
+            print(f"\n[GATE FAILED] Model AUC {report['auc_roc']:.4f} < minimum {MIN_ACCEPTABLE_AUC}")
+            print("Model NOT saved. Improve features or algorithm before retrying.")
+            raise SystemExit(1)
+        
+        print(f"  AUC-ROC:   {report['auc_roc']:.3f}  (gate passed: >= {MIN_ACCEPTABLE_AUC})")
+
+        version_id = save_model(pipe, report, MODEL_PATH)
+        print(f"  Model saved → {MODEL_PATH} (registry: {version_id})")
 
         report_path = output_dir / "backtest_report.json"
         report_path.write_text(json.dumps(report, indent=2))
@@ -532,30 +636,18 @@ def main():
             print(f"  {f['name']:35s}  {f['importance']:.4f}  {bar}")
 
     if do_score:
-        print("\n[SCORE] Loading champion model...")
-        # V4: Load champion from model registry API (falls back to local pkl)
-        pipe, model_version = load_champion_model()
-        print(f"  Using model version: {model_version}")
+        print("\n[SCORE] Loading model...")
+        pipe = load_model(MODEL_PATH)
 
-        preds_df = score_current_sites(features_df, pipe, model_version)
-        
-        # V4: Write directly to PostgreSQL
-        print("[SCORE] Writing predictions to PostgreSQL...")
-        n_written = write_predictions_to_db(preds_df)
-        print(f"  Wrote {n_written} predictions to fact_predictions")
-
-        # Optionally write parquet and JSON for local dev
+        preds_df = score_current_sites(features_df, pipe)
         preds_path = output_dir / "fact_predictions.parquet"
         preds_df.to_parquet(preds_path, index=False)
-        print(f"  Parquet backup → {preds_path}")
-
-        if args.write_json:
-            json_path = write_predictions_json(preds_df, output_dir)
-            print(f"  JSON export → {json_path}")
-
+        json_path = write_predictions_json(preds_df, output_dir)
+        print(f"  Scored {len(preds_df)} sites → {preds_path}")
+        print(f"  JSON export → {json_path}")
         print()
-        display = preds_df[["site_id", "probability"]].copy()
-        display["risk"] = display["probability"].apply(
+        display = preds_df[["site_id", "incident_probability_7d"]].copy()
+        display["risk"] = display["incident_probability_7d"].apply(
             lambda p: "HIGH" if p >= 0.70 else ("MODERATE" if p >= 0.40 else "LOW")
         )
         print(display.to_string(index=False))

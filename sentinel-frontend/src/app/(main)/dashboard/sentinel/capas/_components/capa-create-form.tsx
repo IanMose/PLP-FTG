@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
+
 interface Props {
   sourceAlertId?: string;
   sourceHazardId?: string;
@@ -30,7 +32,8 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
 
   useEffect(() => {
     if (!open) return;
-    fetch('/api/proxy/technicians')
+    fetch("/api/proxy/capas/technicians", { cache: "no-store" })
+      .catch(() => fetch(`${API_BASE}/api/technicians`))
       .then((r) => r.json())
       .then(setTechnicians)
       .catch(() => {});
@@ -43,7 +46,7 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/proxy/capas', {
+      const res = await fetch("/api/proxy/capas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, ownerId: Number(form.ownerId) }),
