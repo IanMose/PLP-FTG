@@ -8,7 +8,8 @@
 
 spring:
   datasource:
-    url: ${DATABASE_URL}
+    # Render's jdbcConnectionString may include credentials in URL — use separate properties instead
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}

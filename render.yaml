@@ -34,10 +34,20 @@ services:
         value: render
 
       # ── Database — wired from the sibling DB service above ───────────────
-      - key: DATABASE_URL
+      - key: DB_HOST
         fromDatabase:
           name: sentinel-db
-          property: jdbcConnectionString   # jdbc:postgresql://...
+          property: host
+
+      - key: DB_PORT
+        fromDatabase:
+          name: sentinel-db
+          property: port
+
+      - key: DB_NAME
+        fromDatabase:
+          name: sentinel-db
+          property: database
 
       - key: DB_USERNAME
         fromDatabase:
