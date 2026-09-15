@@ -2,6 +2,7 @@ package com.sentinel.hazard;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.sentinel.user.AppUserRepository;
@@ -50,6 +51,7 @@ public class HazardReportController {
     }
 
     @PatchMapping("/{id}/risk-assessment")
+    @PreAuthorize("hasAnyRole('FIELD_TECHNICIAN', 'HSE_OFFICER', 'HSE_MANAGER', 'ADMIN')")
     public ResponseEntity<HazardReportDto> assessRisk(
             @PathVariable String id,
             @RequestBody RiskAssessmentRequest req,

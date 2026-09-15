@@ -8,6 +8,13 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000    # 30s before giving up on a new connection
+      idle-timeout: 600000         # 10 min before retiring idle connections
+      max-lifetime: 1800000        # 30 min max connection lifetime
+      pool-name: SentinelHikariCP
 
   jpa:
     hibernate:
@@ -20,8 +27,8 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-    out-of-order: true
-    validate-on-migrate: false
+    out-of-order: false
+    validate-on-migrate: true
 
   sql:
     init:
@@ -37,3 +44,17 @@ spring:
 sentinel:
   etl:
     enabled: false
+  # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: sentinel-backend
+      auto-offset-reset: earliest
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}

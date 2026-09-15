@@ -20,6 +20,16 @@ const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
 });
 
+// Test mode: bypass auth when backend is down (TEMP - remove before prod)
+const TEST_MODE = process.env.NEXT_PUBLIC_TEST_MODE === "true";
+const TEST_USER = {
+  userId: 999,
+  name: "Dev User",
+  email: "dev@sentinel.local",
+  role: "ADMIN",
+  token: "test-token-dev-mode",
+};
+
 export function LoginForm() {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
@@ -32,6 +42,14 @@ export function LoginForm() {
       password: "",
     },
   });
+
+  // Dev login - bypass backend auth
+  function handleDevLogin() {
+    setUser(TEST_USER);
+    setClientCookie("sentinel-token", TEST_USER.token, 1);
+    toast.success("Dev mode login - backend bypassed");
+    router.push("/dashboard/sentinel");
+  }
 
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true);
@@ -102,6 +120,17 @@ export function LoginForm() {
       <Button className="w-full" type="submit" disabled={isLoading}>
         {isLoading ? "Signing in…" : "Sign in"}
       </Button>
+
+      {TEST_MODE && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed border-amber-500 text-amber-600 hover:bg-amber-50"
+          onClick={handleDevLogin}
+        >
+          Dev Login (Backend Bypass)
+        </Button>
+      )}
     </form>
   );
 }

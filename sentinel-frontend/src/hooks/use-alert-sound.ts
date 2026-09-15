@@ -84,10 +84,19 @@ interface UseAlertSoundResult {
 }
 
 export function useAlertSound(): UseAlertSoundResult {
-  const [muted, setMuted] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(STORAGE_KEY) === "true";
-  });
+  // Always start muted on server to match SSR output
+  const [muted, setMuted] = useState<boolean>(true);
+
+  // Sync with localStorage after mount (client-only)
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) {
+      setMuted(stored === "true");
+    } else {
+      // Default to muted if never set
+      setMuted(true);
+    }
+  }, []);
 
   // Keep all hook instances in sync — when the toggle in the header writes
   // to localStorage, the SentinelAlertSound component's instance hears it
