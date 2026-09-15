@@ -1,10 +1,7 @@
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM eclipse-temurin:17-jdk-jammy AS build
+FROM eclipse-temurin:21-jdk-alpine AS build
 
 WORKDIR /app
-
-# Install unzip — required by the Maven wrapper to extract the Maven distribution
-RUN apt-get update -q && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
 
 # Copy the Maven wrapper and POM first so Docker can cache the dependency layer
 COPY .mvn/ .mvn/
@@ -16,7 +13,7 @@ COPY src/ src/
 RUN ./mvnw package -DskipTests -q
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM eclipse-temurin:17-jre-jammy AS runtime
+FROM eclipse-temurin:21-jre-alpine AS runtime
 
 WORKDIR /app
 
