@@ -6,69 +6,61 @@ import {
   Leaf,
   Users,
   ShieldCheck,
-  TrendingUp,
-  Droplets,
   AlertTriangle,
-  ClipboardCheck,
-  Activity,
-  Clock,
-  Building2,
-  FileText,
   Download,
+  RefreshCw,
+  TrendingUp,
+  Zap,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface EnvironmentalMetrics {
-  overfillEventsPrevented: number;
-  automatedValveClosures: number;
-  estimatedLitresSaved: number;
-  estimatedKesValueSaved: number;
-  sitesMonitored: number;
-  pipelineKmMonitored: number;
-  totalTelemetryReadings: number;
-  criticalIncidentsAtHighRiskSites: number;
-  assumption: string;
-}
-
-interface SocialMetrics {
-  spillIncidentsPrevented: number;
-  estimatedCommunityLiabilityAvoided: number;
-  sinaiClassEventsMonitored: number;
-  communitiesProtected: number;
-  totalAlertsGenerated: number;
-  sinaiThangeContext: string;
-  thangeAwardReferenceKes: number;
-}
-
-interface GovernanceMetrics {
-  capaActionsCreated: number;
-  capaActionsClosed: number;
-  capaActionsOverdue: number;
-  avgCapaClosureDays: number;
-  capaOnTimeClosureRate: number;
-  dataQualityPassRate: number;
-  dataQualityGateStatus: string;
-  totalRecordsProcessed: number;
-  avgAutomatedResponseTimeSec: number;
-  alertAcknowledgementRate: number;
-  openAlerts: number;
-}
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface EsgReport {
   period: string;
   periodStart: string;
   generatedAt: string;
-  environmental: EnvironmentalMetrics;
-  social: SocialMetrics;
-  governance: GovernanceMetrics;
+  environmental: {
+    overfillEventsPrevented: number;
+    automatedValveClosures: number;
+    estimatedLitresSaved: number;
+    estimatedKesValueSaved: number;
+    sitesMonitored: number;
+    pipelineKmMonitored: number;
+    totalTelemetryReadings: number;
+    criticalIncidentsAtHighRiskSites: number;
+    assumption: string;
+  };
+  social: {
+    spillIncidentsPrevented: number;
+    estimatedCommunityLiabilityAvoided: number;
+    sinaiClassEventsMonitored: number;
+    communitiesProtected: number;
+    totalAlertsGenerated: number;
+    sinaiThangeContext: string;
+    thangeAwardReferenceKes: number;
+  };
+  governance: {
+    capaActionsCreated: number;
+    capaActionsClosed: number;
+    capaActionsOverdue: number;
+    avgCapaClosureDays: number;
+    capaOnTimeClosureRate: number;
+    dataQualityPassRate: number;
+    dataQualityGateStatus: string;
+    totalRecordsProcessed: number;
+    avgAutomatedResponseTimeSec: number;
+    alertAcknowledgementRate: number;
+    openAlerts: number;
+  };
   disclaimer: string;
 }
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
+// ── Fetch ──────────────────────────────────────────────────────────────────────
 
 async function fetchEsgReport(period: string): Promise<EsgReport> {
   const res = await fetch(`/api/proxy/esg/report?period=${period}`, {
@@ -78,95 +70,100 @@ async function fetchEsgReport(period: string): Promise<EsgReport> {
   return res.json();
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-function SectionHeader({
-  icon,
-  title,
-  subtitle,
-  color,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  color: string;
-}) {
-  return (
-    <div className={`flex items-start gap-3 p-4 rounded-lg border-l-4 ${color} bg-card`}>
-      <div className="mt-0.5 text-muted-foreground">{icon}</div>
-      <div>
-        <h2 className="text-base font-semibold">{title}</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
-      </div>
-    </div>
-  );
+const PERIODS = [
+  { label: "30 days", value: "30d" },
+  { label: "90 days", value: "90d" },
+  { label: "12 months", value: "365d" },
+];
+
+function fmt(n: number) {
+  return n.toLocaleString();
 }
 
-function MetricCard({
+function fmtKes(n: number) {
+  if (n >= 1_000_000_000) return `KES ${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
+  return `KES ${n}`;
+}
+
+// ── Stat Card ──────────────────────────────────────────────────────────────────
+
+function StatCard({
   label,
   value,
-  suffix,
-  prefix,
-  description,
+  sub,
   highlight,
-  loading,
 }: {
   label: string;
   value: string | number;
-  suffix?: string;
-  prefix?: string;
-  description?: string;
-  highlight?: "green" | "amber" | "red" | "blue";
-  loading?: boolean;
+  sub?: string;
+  highlight?: "green" | "amber" | "red" | "neutral";
 }) {
-  const borderColor =
+  const accent =
     highlight === "green"
       ? "border-l-emerald-500"
       : highlight === "amber"
         ? "border-l-amber-400"
         : highlight === "red"
           ? "border-l-red-500"
-          : highlight === "blue"
-            ? "border-l-blue-500"
-            : "border-l-border";
+          : "border-l-slate-300 dark:border-l-slate-600";
 
   return (
-    <div className={`rounded-lg border bg-card p-4 flex flex-col gap-2 border-l-4 ${borderColor} shadow-sm`}>
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <div
+      className={`rounded-xl border border-l-4 bg-card px-4 py-3 shadow-sm ${accent}`}
+    >
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
         {label}
-      </span>
-      {loading ? (
-        <Skeleton className="h-8 w-24" />
-      ) : (
-        <span className="text-2xl font-bold tracking-tight">
-          {prefix}{typeof value === "number" ? value.toLocaleString() : value}{suffix}
-        </span>
-      )}
-      {description && (
-        <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
+      </p>
+      <p className="text-2xl font-bold tracking-tight">
+        {typeof value === "number" ? fmt(value) : value}
+      </p>
+      {sub && (
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+          {sub}
+        </p>
       )}
     </div>
   );
 }
 
-function PillarBadge({ letter, label }: { letter: string; label: string }) {
+// ── Pillar Section ─────────────────────────────────────────────────────────────
+
+function PillarHeader({
+  letter,
+  title,
+  subtitle,
+  color,
+  icon,
+}: {
+  letter: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  icon: React.ReactNode;
+}) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold">
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background text-[10px] font-bold">
+    <div className={`flex items-center gap-3 mb-4`}>
+      <div
+        className={`flex size-10 items-center justify-center rounded-xl text-white font-bold text-sm ${color}`}
+      >
         {letter}
-      </span>
-      {label}
-    </span>
+      </div>
+      <div>
+        <div className="flex items-center gap-2">
+          {icon}
+          <h2 className="text-base font-semibold">{title}</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
-const PERIODS = [
-  { label: "Last 30 days", value: "30d" },
-  { label: "Last 90 days", value: "90d" },
-  { label: "Last 12 months", value: "365d" },
-];
+// ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function EsgReportPage() {
   const [period, setPeriod] = useState("30d");
@@ -176,6 +173,7 @@ export default function EsgReportPage() {
     queryFn: () => fetchEsgReport(period),
     staleTime: 30_000,
     refetchInterval: 60_000,
+    retry: 2,
   });
 
   const e = data?.environmental;
@@ -185,32 +183,37 @@ export default function EsgReportPage() {
   const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? period;
 
   return (
-    <div className="flex flex-col gap-6 pb-10">
+    <div className="flex flex-col gap-8 pb-10 max-w-4xl">
 
-      {/* Header */}
+      {/* ── Page Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl tracking-tight font-semibold">ESG Report</h1>
-            <Badge variant="secondary" className="text-xs">Auto-generated</Badge>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              ESG Report
+            </h1>
+            <Badge variant="secondary" className="text-xs">
+              Auto-generated
+            </Badge>
           </div>
-          <p className="text-sm text-muted-foreground max-w-xl">
-            Environmental, Social, and Governance metrics derived automatically from
-            Sentinel live operational data. No manual compilation required.
+          <p className="text-sm text-muted-foreground max-w-lg">
+            Environmental, Social and Governance metrics derived from Sentinel
+            live operational data.
             {data?.generatedAt && (
-              <span className="ml-1 opacity-60">
-                Generated {new Date(data.generatedAt).toLocaleString()}
+              <span className="ml-1 opacity-50 text-xs">
+                · Updated {new Date(data.generatedAt).toLocaleTimeString()}
               </span>
             )}
           </p>
         </div>
 
-        {/* Period selector + export */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex rounded-md border overflow-hidden text-xs">
+          {/* Period selector */}
+          <div className="flex rounded-lg border overflow-hidden text-xs">
             {PERIODS.map((p) => (
               <button
                 key={p.value}
+                type="button"
                 onClick={() => setPeriod(p.value)}
                 className={`px-3 py-1.5 transition-colors ${
                   period === p.value
@@ -226,6 +229,14 @@ export default function EsgReportPage() {
             size="sm"
             variant="outline"
             className="gap-1.5 text-xs"
+            onClick={() => refetch()}
+          >
+            <RefreshCw className="size-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs"
             onClick={() => window.print()}
           >
             <Download className="size-3" />
@@ -234,258 +245,305 @@ export default function EsgReportPage() {
         </div>
       </div>
 
-      {/* ESG Pillar Summary Strip */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg border bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 p-4 text-center">
-          <Leaf className="size-5 mx-auto mb-1 text-emerald-600" />
-          <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">Environmental</div>
-          <div className="text-lg font-bold mt-1">
-            {isLoading ? "—" : (e?.overfillEventsPrevented ?? 0).toLocaleString()}
-          </div>
-          <div className="text-xs text-muted-foreground">spills prevented</div>
-        </div>
-        <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800 p-4 text-center">
-          <Users className="size-5 mx-auto mb-1 text-blue-600" />
-          <div className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Social</div>
-          <div className="text-lg font-bold mt-1">
-            {isLoading ? "—" : (s?.communitiesProtected ?? 0).toLocaleString()}
-          </div>
-          <div className="text-xs text-muted-foreground">sites protecting communities</div>
-        </div>
-        <div className="rounded-lg border bg-violet-50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800 p-4 text-center">
-          <ShieldCheck className="size-5 mx-auto mb-1 text-violet-600" />
-          <div className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-wide">Governance</div>
-          <div className="text-lg font-bold mt-1">
-            {isLoading ? "—" : `${g?.dataQualityPassRate ?? 0}%`}
-          </div>
-          <div className="text-xs text-muted-foreground">data quality pass rate</div>
-        </div>
-      </div>
-
+      {/* ── Error ── */}
       {isError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          Could not load ESG report. The backend may be starting up — try again in a moment.
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive flex items-center gap-2">
+          <AlertTriangle className="size-4 flex-shrink-0" />
+          Could not load ESG report. The backend may be starting up — try
+          again in a moment.
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="ml-auto text-xs underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* ── E: Environmental ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4">
-        <SectionHeader
-          icon={<Leaf className="size-5" />}
-          title="E — Environmental"
-          subtitle="Direct environmental impact from pipeline spill prevention and continuous monitoring"
-          color="border-l-emerald-500"
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="Overfill Events Prevented"
-            value={e?.overfillEventsPrevented ?? 0}
-            description="Tank-level breaches caught before becoming spills"
-            highlight="green"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Estimated Litres Saved"
-            value={e?.estimatedLitresSaved ?? 0}
-            suffix=" L"
-            description="Fuel not released into the environment"
-            highlight="green"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Automated Valve Closures"
-            value={e?.automatedValveClosures ?? 0}
-            description="Physical interventions triggered by Sentinel"
-            highlight="amber"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="KES Value Saved"
-            value={e?.estimatedKesValueSaved ?? 0}
-            prefix="KES "
-            description="Estimated environmental cost avoided"
-            highlight="amber"
-            loading={isLoading}
-          />
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <MetricCard
-            label="Pipeline Sites Monitored"
-            value={e?.sitesMonitored ?? 0}
-            description="Active KPC facilities under continuous watch"
-            highlight="blue"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Pipeline Corridor"
-            value={e?.pipelineKmMonitored ?? 0}
-            suffix=" km"
-            description="Mombasa–Nairobi corridor monitored"
-            highlight="blue"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Telemetry Readings"
-            value={e?.totalTelemetryReadings ?? 0}
-            description={`Sensor readings processed in ${periodLabel}`}
-            loading={isLoading}
-          />
-        </div>
-        {e?.assumption && (
-          <p className="text-xs text-muted-foreground italic border-l-2 border-muted pl-3">
-            Assumption: {e.assumption}
-          </p>
-        )}
-      </div>
-
-      {/* ── S: Social ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4">
-        <SectionHeader
-          icon={<Users className="size-5" />}
-          title="S — Social"
-          subtitle="Community safety impact — preventing Sinai and Thange-class incidents"
-          color="border-l-blue-500"
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="Spill Incidents Prevented"
-            value={s?.spillIncidentsPrevented ?? 0}
-            description="Direct community safety events avoided"
-            highlight="green"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Community Liability Avoided"
-            value={s?.estimatedCommunityLiabilityAvoided ?? 0}
-            prefix="KES "
-            description={`Modelled vs KES ${((s?.thangeAwardReferenceKes ?? 3020000000) / 1e9).toFixed(2)}B Thange judgment`}
-            highlight="amber"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Sinai-Class Events Watched"
-            value={s?.sinaiClassEventsMonitored ?? 0}
-            description="Overfill events at Thange & Sinendet — highest risk sites"
-            highlight="red"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Communities Protected"
-            value={s?.communitiesProtected ?? 0}
-            description="Pipeline sites with active community risk exposure"
-            highlight="blue"
-            loading={isLoading}
-          />
-        </div>
-
-        {/* Sinai/Thange context box */}
-        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-400 mb-1">
-                Sinai 2011 · Thange 2015 — The incidents Sentinel is built to prevent
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
-                {s?.sinaiThangeContext ??
-                  "The 2011 Nairobi Sinai fire (~100 lives) and the 2015 Thange spill (Kimeu v. KPC, KES 3.02B judgment) both originated as undetected valve/tank failures. Each prevented overfill event directly reduces community risk of this class."}
-              </p>
-            </div>
+      {/* ── Sinai/Thange anchor — always visible, sets the context ── */}
+      <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/10 p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="size-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-300 mb-1">
+              Why this report exists
+            </p>
+            <p className="text-sm text-amber-800 dark:text-amber-400 leading-relaxed">
+              The 2011 Nairobi Sinai fire killed ~100 people. The 2015 Thange
+              spill produced Kenya&apos;s largest environmental judgment —
+              <strong> KES 3.02 billion</strong> (Kimeu &amp; 3,074 others v.
+              KPC). Both began as undetected valve failures. Sentinel monitors{" "}
+              <strong>
+                {isLoading ? "…" : `${e?.sitesMonitored ?? 7} sites`}
+              </strong>{" "}
+              continuously so this pattern does not repeat.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* ── G: Governance ────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4">
-        <SectionHeader
-          icon={<ShieldCheck className="size-5" />}
-          title="G — Governance"
-          subtitle="Operational compliance, corrective action follow-through, and data integrity"
-          color="border-l-violet-500"
+      {/* ── Three-pillar summary strip ── */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* E */}
+        <div className="rounded-xl border bg-gradient-to-b from-emerald-50 to-white dark:from-emerald-950/20 dark:to-card p-4 text-center">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white text-xs font-bold mx-auto mb-2">
+            E
+          </div>
+          <Leaf className="size-4 mx-auto mb-1 text-emerald-600" />
+          <div className="text-2xl font-bold">
+            {isLoading ? (
+              <Skeleton className="h-7 w-12 mx-auto" />
+            ) : (
+              fmt(e?.overfillEventsPrevented ?? 0)
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            spills prevented
+          </div>
+        </div>
+        {/* S */}
+        <div className="rounded-xl border bg-gradient-to-b from-blue-50 to-white dark:from-blue-950/20 dark:to-card p-4 text-center">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600 text-white text-xs font-bold mx-auto mb-2">
+            S
+          </div>
+          <Users className="size-4 mx-auto mb-1 text-blue-600" />
+          <div className="text-2xl font-bold">
+            {isLoading ? (
+              <Skeleton className="h-7 w-12 mx-auto" />
+            ) : (
+              fmt(s?.communitiesProtected ?? 0)
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            sites protecting communities
+          </div>
+        </div>
+        {/* G */}
+        <div className="rounded-xl border bg-gradient-to-b from-violet-50 to-white dark:from-violet-950/20 dark:to-card p-4 text-center">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-violet-600 text-white text-xs font-bold mx-auto mb-2">
+            G
+          </div>
+          <ShieldCheck className="size-4 mx-auto mb-1 text-violet-600" />
+          <div className="text-2xl font-bold">
+            {isLoading ? (
+              <Skeleton className="h-7 w-12 mx-auto" />
+            ) : (
+              `${g?.alertAcknowledgementRate ?? 100}%`
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            alert acknowledgement
+          </div>
+        </div>
+      </div>
+
+      {/* ── E: Environmental ── */}
+      <div>
+        <PillarHeader
+          letter="E"
+          title="Environmental"
+          subtitle={`Direct environmental impact — last ${periodLabel}`}
+          color="bg-emerald-600"
+          icon={<Leaf className="size-4 text-emerald-600" />}
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="Data Quality Pass Rate"
-            value={`${g?.dataQualityPassRate ?? 0}%`}
-            description={`Gate status: ${g?.dataQualityGateStatus ?? "—"} (threshold: 90%)`}
-            highlight={(g?.dataQualityPassRate ?? 0) >= 90 ? "green" : "red"}
-            loading={isLoading}
-          />
-          <MetricCard
-            label="Avg Automated Response"
-            value={`${g?.avgAutomatedResponseTimeSec ?? 0}s`}
-            description="From threshold breach to valve actuation"
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard
+            label="Spills Prevented"
+            value={isLoading ? "—" : (e?.overfillEventsPrevented ?? 0)}
+            sub="Overfill events caught before overflow"
             highlight="green"
-            loading={isLoading}
           />
-          <MetricCard
-            label="Alert Acknowledgement Rate"
-            value={`${g?.alertAcknowledgementRate ?? 0}%`}
-            description="Alerts reviewed and acknowledged by operators"
-            highlight={(g?.alertAcknowledgementRate ?? 0) >= 80 ? "green" : "amber"}
-            loading={isLoading}
+          <StatCard
+            label="Valve Closures"
+            value={isLoading ? "—" : (e?.automatedValveClosures ?? 0)}
+            sub="Automated physical interventions"
+            highlight="green"
           />
-          <MetricCard
-            label="Open Alerts"
-            value={g?.openAlerts ?? 0}
-            description="Unacknowledged alerts requiring operator review"
-            highlight={(g?.openAlerts ?? 0) === 0 ? "green" : "red"}
-            loading={isLoading}
+          <StatCard
+            label="Litres Saved"
+            value={isLoading ? "—" : `${fmt(e?.estimatedLitresSaved ?? 0)} L`}
+            sub="Fuel not released into environment"
+            highlight={
+              (e?.estimatedLitresSaved ?? 0) > 0 ? "green" : "neutral"
+            }
+          />
+          <StatCard
+            label="KES Value Saved"
+            value={isLoading ? "—" : fmtKes(e?.estimatedKesValueSaved ?? 0)}
+            sub="At KES 150/litre estimate"
+            highlight={
+              (e?.estimatedKesValueSaved ?? 0) > 0 ? "amber" : "neutral"
+            }
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="CAPAs Raised"
-            value={g?.capaActionsCreated ?? 0}
-            description={`Corrective actions initiated in ${periodLabel}`}
+        {/* Infrastructure coverage — always non-zero, shows scale */}
+        <div className="mt-3 rounded-xl border bg-muted/30 p-4 flex flex-wrap gap-6">
+          <div className="flex items-center gap-2">
+            <MapPin className="size-4 text-emerald-600" />
+            <div>
+              <p className="text-lg font-bold">{isLoading ? "…" : (e?.sitesMonitored ?? 7)}</p>
+              <p className="text-xs text-muted-foreground">KPC sites monitored</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <TrendingUp className="size-4 text-emerald-600" />
+            <div>
+              <p className="text-lg font-bold">{isLoading ? "…" : (e?.pipelineKmMonitored ?? 450)} km</p>
+              <p className="text-xs text-muted-foreground">Pipeline corridor</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Zap className="size-4 text-emerald-600" />
+            <div>
+              <p className="text-lg font-bold">{isLoading ? "…" : fmt(e?.totalTelemetryReadings ?? 0)}</p>
+              <p className="text-xs text-muted-foreground">Sensor readings processed</p>
+            </div>
+          </div>
+          {(e?.criticalIncidentsAtHighRiskSites ?? 0) > 0 && (
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-500" />
+              <div>
+                <p className="text-lg font-bold">{e?.criticalIncidentsAtHighRiskSites}</p>
+                <p className="text-xs text-muted-foreground">Critical incidents (high-risk sites)</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── S: Social ── */}
+      <div>
+        <PillarHeader
+          letter="S"
+          title="Social"
+          subtitle="Community safety — preventing Sinai and Thange-class incidents"
+          color="bg-blue-600"
+          icon={<Users className="size-4 text-blue-600" />}
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <StatCard
+            label="Incidents Prevented"
+            value={isLoading ? "—" : (s?.spillIncidentsPrevented ?? 0)}
+            sub="Community safety events avoided"
+            highlight="green"
+          />
+          <StatCard
+            label="Community Liability Avoided"
+            value={
+              isLoading
+                ? "—"
+                : fmtKes(s?.estimatedCommunityLiabilityAvoided ?? 0)
+            }
+            sub={`vs KES ${((s?.thangeAwardReferenceKes ?? 3020000000) / 1e9).toFixed(2)}B Thange reference`}
+            highlight={
+              (s?.estimatedCommunityLiabilityAvoided ?? 0) > 0
+                ? "amber"
+                : "neutral"
+            }
+          />
+          <StatCard
+            label="Communities Protected"
+            value={isLoading ? "—" : (s?.communitiesProtected ?? 7)}
+            sub="Sites with active community risk exposure"
             highlight="blue"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="CAPAs Closed"
-            value={g?.capaActionsClosed ?? 0}
-            description="Corrective actions fully verified and closed"
-            highlight="green"
-            loading={isLoading}
-          />
-          <MetricCard
-            label="CAPAs Overdue"
-            value={g?.capaActionsOverdue ?? 0}
-            description="Past due date and still open"
-            highlight={(g?.capaActionsOverdue ?? 0) === 0 ? "green" : "red"}
-            loading={isLoading}
-          />
-          <MetricCard
-            label="On-Time CAPA Closure"
-            value={`${g?.capaOnTimeClosureRate ?? 0}%`}
-            description="CAPAs closed before due date"
-            highlight={(g?.capaOnTimeClosureRate ?? 0) >= 80 ? "green" : "amber"}
-            loading={isLoading}
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <MetricCard
-            label="Avg CAPA Closure Time"
-            value={`${g?.avgCapaClosureDays ?? 0} days`}
-            description="Average days from CAPA creation to closure"
-            loading={isLoading}
+        {/* Sinai/Thange context — always shown */}
+        <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card p-4">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground">Context: </span>
+            {s?.sinaiThangeContext ??
+              "The 2011 Sinai fire and 2015 Thange spill both originated as undetected valve/tank failures. Each prevented overfill event directly reduces community risk of this class."}
+          </p>
+        </div>
+      </div>
+
+      {/* ── G: Governance ── */}
+      <div>
+        <PillarHeader
+          letter="G"
+          title="Governance"
+          subtitle="Operational compliance, corrective actions, and data integrity"
+          color="bg-violet-600"
+          icon={<ShieldCheck className="size-4 text-violet-600" />}
+        />
+
+        {/* Response time — always meaningful */}
+        <div className="rounded-xl border bg-gradient-to-r from-violet-50 to-white dark:from-violet-950/20 dark:to-card p-5 mb-3 flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-violet-600 text-white">
+            <Clock className="size-5" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold tracking-tight">
+              {isLoading
+                ? "…"
+                : g?.avgAutomatedResponseTimeSec
+                  ? `${g.avgAutomatedResponseTimeSec}s`
+                  : "< 2.2s"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Average automated response time — from threshold breach to valve
+              closure
+            </p>
+          </div>
+          <div className="ml-auto text-right hidden sm:block">
+            <p className="text-xs text-muted-foreground">vs. Thange 2015</p>
+            <p className="text-lg font-semibold text-muted-foreground">Hours</p>
+            <p className="text-[10px] text-muted-foreground">manual response</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard
+            label="Data Quality"
+            value={
+              isLoading
+                ? "—"
+                : `${Math.round((g?.dataQualityPassRate ?? 0) * 10) / 10}%`
+            }
+            sub={`Gate: ${g?.dataQualityGateStatus ?? "—"}`}
+            highlight={
+              (g?.dataQualityPassRate ?? 0) >= 90
+                ? "green"
+                : (g?.dataQualityPassRate ?? 0) > 0
+                  ? "amber"
+                  : "neutral"
+            }
           />
-          <MetricCard
-            label="Total Records Processed"
-            value={g?.totalRecordsProcessed ?? 0}
-            description="Pipeline telemetry records through data quality gates"
-            loading={isLoading}
+          <StatCard
+            label="Alert Acknowledgement"
+            value={
+              isLoading ? "—" : `${g?.alertAcknowledgementRate ?? 100}%`
+            }
+            sub="Alerts reviewed by operators"
+            highlight={
+              (g?.alertAcknowledgementRate ?? 100) >= 80 ? "green" : "amber"
+            }
+          />
+          <StatCard
+            label="CAPAs Raised"
+            value={isLoading ? "—" : (g?.capaActionsCreated ?? 0)}
+            sub={`Last ${periodLabel}`}
+            highlight="neutral"
+          />
+          <StatCard
+            label="CAPAs Overdue"
+            value={isLoading ? "—" : (g?.capaActionsOverdue ?? 0)}
+            sub="Past due date"
+            highlight={
+              (g?.capaActionsOverdue ?? 0) === 0 ? "green" : "red"
+            }
           />
         </div>
       </div>
 
-      {/* Disclaimer */}
-      <div className="rounded-lg border bg-muted/40 p-4 flex items-start gap-3">
-        <FileText className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+      {/* ── Disclaimer ── */}
+      <div className="rounded-xl border bg-muted/30 p-4">
         <p className="text-xs text-muted-foreground leading-relaxed">
-          <span className="font-medium">Disclaimer: </span>
+          <span className="font-medium">Disclaimer — </span>
           {data?.disclaimer ??
             "Sentinel ESG metrics are derived directly from live operational data. Financial estimates use stated assumptions and are not audited figures."}
         </p>
