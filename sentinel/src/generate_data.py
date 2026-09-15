@@ -1109,47 +1109,53 @@ def generate_tank_telemetry(n: int, seed_overfill_at_site003: bool = True) -> li
         }
         rows.append(row)
     
-    # ---- Seed the demo overfill scenario at SITE-003 ----
+    # ---- Seed demo overfill scenarios at high-risk sites ----
+    # Per V4 Build Plan: SITE-003 and SITE-006 have seeded overfill events
+    OVERFILL_SEEDS = {
+        ("SITE-003", "TANK-A1"): 97.2,  # Thange - high risk
+        ("SITE-006", "TANK-A1"): 96.8,  # Sinendet - high risk
+    }
+    
     if seed_overfill_at_site003:
-        demo_loading_op = f"LOAD-SEED-{int(datetime.now().timestamp()) % 10000:04d}"
-        demo_timestamp = TODAY - timedelta(hours=2)  # Recent
-        
-        # Create a sequence of readings showing tank filling up
-        demo_readings = [
-            # Start of loading
-            {"level": 45.0, "valve": "Open", "offset_min": -30},
-            {"level": 65.0, "valve": "Open", "offset_min": -20},
-            {"level": 82.0, "valve": "Open", "offset_min": -10},
-            {"level": 91.0, "valve": "Open", "offset_min": -5},
-            # OVERFILL RISK - valve still open at 96.5%
-            {"level": 96.5, "valve": "Open", "offset_min": 0},
-        ]
-        
-        for reading in demo_readings:
-            ts = demo_timestamp + timedelta(minutes=reading["offset_min"])
-            record_id = f"TANK-DEMO-{reading_counter:03d}"
-            reading_counter += 1
+        for (seed_site, seed_tank), seed_level in OVERFILL_SEEDS.items():
+            demo_loading_op = f"LOAD-SEED-{seed_site[-3:]}-{int(datetime.now().timestamp()) % 10000:04d}"
+            demo_timestamp = TODAY - timedelta(hours=random.randint(1, 4))
             
-            overfill = reading["level"] >= 95.0 and reading["valve"] == "Open"
+            # Create a sequence of readings showing tank filling up
+            demo_readings = [
+                {"level": 45.0, "valve": "Open", "offset_min": -30},
+                {"level": 65.0, "valve": "Open", "offset_min": -20},
+                {"level": 82.0, "valve": "Open", "offset_min": -10},
+                {"level": 91.0, "valve": "Open", "offset_min": -5},
+                # OVERFILL RISK - valve still open at seeded level
+                {"level": seed_level, "valve": "Open", "offset_min": 0},
+            ]
             
-            demo_row = {
-                "reading_id": record_id,
-                "site_id": "SITE-003",
-                "tank_id": "TANK-A1",
-                "reading_timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
-                "tank_level_pct": reading["level"],
-                "flow_rate_bph": round(float(np.random.normal(450, 20)), 2),
-                "valve_status": reading["valve"],
-                "sensor_id": "TANK-SENSOR-003",
-                "loading_operation_id": demo_loading_op,
-                "overfill_flag": overfill,
-                "batch_id": "BATCH-DEMO-SEED",
-            }
-            rows.append(demo_row)
-            
-            if overfill:
-                log_issue(record_id, "tank_telemetry", "overfill_risk",
-                          f"level={reading['level']}% valve={reading['valve']} at SITE-003")
+            for reading in demo_readings:
+                ts = demo_timestamp + timedelta(minutes=reading["offset_min"])
+                record_id = f"TANK-SEED-{seed_site[-3:]}-{reading_counter:03d}"
+                reading_counter += 1
+                
+                overfill = reading["level"] >= 95.0 and reading["valve"] == "Open"
+                
+                demo_row = {
+                    "reading_id": record_id,
+                    "site_id": seed_site,
+                    "tank_id": seed_tank,
+                    "reading_timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "tank_level_pct": reading["level"],
+                    "flow_rate_bph": round(float(np.random.normal(450, 20)), 2),
+                    "valve_status": reading["valve"],
+                    "sensor_id": f"TANK-SENSOR-{seed_site[-3:]}",
+                    "loading_operation_id": demo_loading_op,
+                    "overfill_flag": overfill,
+                    "batch_id": f"BATCH-DEMO-{seed_site}",
+                }
+                rows.append(demo_row)
+                
+                if overfill:
+                    log_issue(record_id, "tank_telemetry", "overfill_risk",
+                              f"level={reading['level']}% valve={reading['valve']} at {seed_site}")
     
     # ---- Inject messiness ----
     for row in rows:

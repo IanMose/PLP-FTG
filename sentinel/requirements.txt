@@ -1,6 +1,5 @@
 pandas
 pandera
-pytest
 duckdb
 pyarrow
 numpy
@@ -9,3 +8,10 @@ scikit-learn>=1.5
 joblib>=1.4
 lifelines>=0.29
 scipy>=1.14
+psycopg2-binary==2.9.9
+requests==2.32.3
+
+# test dependencies
+pytest
+pytest-cov
+responses==0.25.3

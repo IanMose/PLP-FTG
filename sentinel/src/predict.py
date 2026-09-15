@@ -27,6 +27,11 @@ Missing value imputation:
     days_since_last_audit: NULL → 999 (sentinel for "never audited")
     All other feature columns are fully populated by Stage A.
 
+V4 Changes:
+    - Champion model loaded from model_registry API (falls back to local pkl)
+    - Predictions written directly to PostgreSQL via psycopg2
+    - No predictions_export.json output
+
 Usage:
     python -m src.predict                    # train + score (default)
     python -m src.predict --train            # rebuild model from scratch
@@ -34,8 +39,12 @@ Usage:
 """
 
 import argparse
+import base64
 import json
+import logging
+import os
 import re
+import tempfile
 import warnings
 from datetime import date
 from pathlib import Path
@@ -43,10 +52,13 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+
+log = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 FEATURES = [
@@ -60,7 +72,11 @@ FEATURES = [
 ]
 
 MODEL_VERSION = "logreg_v1"
-MODEL_PATH = Path("models/logreg_v1.pkl")
+FALLBACK_MODEL_PATH = Path("models/logreg_v1.pkl")
+
+# V4: API configuration for champion model loading
+API_BASE = os.environ.get("API_BASE", "http://localhost:8080")
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "")
 
 # Label: any Critical incident in next N days
 LABEL_DAYS = 7
@@ -74,6 +90,62 @@ TRAIN_CUTOFF = date(2026, 6, 12)
 
 RAW_DIR = Path("data/raw")
 WAREHOUSE_DIR = Path("data/warehouse")
+
+
+# ── V4: Champion Model Loading ────────────────────────────────────────────────
+
+def load_champion_model():
+    """
+    Load the current champion model from model_registry API.
+    Falls back to FALLBACK_MODEL_PATH if the API is unreachable.
+
+    Returns: (pipeline, version_string)
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE}/api/ml/model-registry",
+            headers={"X-Service-Token": SERVICE_TOKEN},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        registry = resp.json()
+        champion = next((m for m in registry if m.get("status") == "champion"), None)
+        if champion is None:
+            raise ValueError("No champion found in registry")
+
+        artifact_path = Path(champion.get("artifactPath", ""))
+
+        # If artifact file exists locally, use it
+        if artifact_path.exists():
+            log.info("Loading champion from local artifact: %s", artifact_path)
+            return joblib.load(artifact_path), champion["version"]
+
+        # Otherwise, try artifact_blob (base64-encoded PKL stored in DB)
+        blob = champion.get("artifactBlob")
+        if blob:
+            log.info("Loading champion from artifactBlob (version=%s)", champion["version"])
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as f:
+                f.write(base64.b64decode(blob))
+                tmp_path = f.name
+            model = joblib.load(tmp_path)
+            Path(tmp_path).unlink(missing_ok=True)
+            return model, champion["version"]
+
+        raise FileNotFoundError(
+            f"Champion artifact not found at {artifact_path} and no blob available"
+        )
+
+    except Exception as e:
+        log.warning(
+            "Could not load champion from registry (%s) — falling back to %s",
+            e, FALLBACK_MODEL_PATH
+        )
+        if not FALLBACK_MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"Fallback model not found at {FALLBACK_MODEL_PATH}. "
+                "Run 'python -m src.predict --train' to train first."
+            )
+        return joblib.load(FALLBACK_MODEL_PATH), MODEL_VERSION
 
 
 # ── Label construction ────────────────────────────────────────────────────────
@@ -244,12 +316,12 @@ def evaluate_model(pipe, X_test, y_test, train_df: pd.DataFrame, test_df: pd.Dat
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-def save_model(pipe, path: Path = MODEL_PATH):
+def save_model(pipe, path: Path = FALLBACK_MODEL_PATH):
     path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipe, path)
 
 
-def load_model(path: Path = MODEL_PATH):
+def load_model(path: Path = FALLBACK_MODEL_PATH):
     if not path.exists():
         raise FileNotFoundError(
             f"Model artifact not found at {path}. "
@@ -260,12 +332,12 @@ def load_model(path: Path = MODEL_PATH):
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
-def score_current_sites(features_df: pd.DataFrame, pipe) -> pd.DataFrame:
+def score_current_sites(features_df: pd.DataFrame, pipe, model_version: str = MODEL_VERSION) -> pd.DataFrame:
     """
     Score the most recent as_of_date row for each site.
 
     Returns a DataFrame with columns:
-        site_id, as_of_date, incident_probability_7d, model_version, top_features
+        site_id, as_of_date, probability, model_version, top_features
     """
     df = _impute(features_df.copy())
     df["as_of_date"] = pd.to_datetime(df["as_of_date"])
@@ -292,29 +364,71 @@ def score_current_sites(features_df: pd.DataFrame, pipe) -> pd.DataFrame:
         top_features_list.append(json.dumps(top3))
 
     result = latest[["site_id", "as_of_date"]].copy()
-    result["incident_probability_7d"]  = np.round(probs, 4)
-    result["model_version"]            = MODEL_VERSION
-    result["top_features"]             = top_features_list
+    result["probability"]    = np.round(probs, 4)
+    result["model_version"]  = model_version
+    result["top_features"]   = top_features_list
     result = result.reset_index(drop=True)
     return result
 
 
-# ── JSON sidecar for backend ──────────────────────────────────────────────────
+# ── V4: Write Predictions to PostgreSQL ───────────────────────────────────────
+
+def write_predictions_to_db(preds_df: pd.DataFrame) -> int:
+    """
+    Write predictions directly to PostgreSQL fact_predictions table.
+    Returns the number of rows written.
+    """
+    if preds_df is None or preds_df.empty:
+        return 0
+
+    try:
+        from src.db import get_connection, execute_batch
+    except ImportError:
+        log.warning("psycopg2 not available, skipping PostgreSQL write for predictions")
+        return 0
+
+    SQL = """
+        INSERT INTO fact_predictions
+            (site_id, as_of_date, probability, model_version, top_features, created_at)
+        VALUES (%s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (site_id, as_of_date) DO NOTHING
+    """
+
+    rows = []
+    for row in preds_df.itertuples():
+        rows.append((
+            row.site_id.lower(),
+            row.as_of_date,
+            float(row.probability),
+            row.model_version,
+            row.top_features,
+        ))
+
+    try:
+        with get_connection() as conn:
+            count = execute_batch(conn, SQL, rows)
+        log.info("write_predictions_to_db: inserted %d rows", count)
+        return count
+    except Exception as e:
+        log.error("write_predictions_to_db failed: %s", e)
+        return 0
+
+
+# ── JSON sidecar for backend (legacy, kept for local dev) ─────────────────────
 
 def write_predictions_json(preds_df: pd.DataFrame, output_dir: Path = WAREHOUSE_DIR):
     """
     Write predictions_export.json alongside the parquet file.
-    The Spring Boot EtlReloadService reads this to upsert predictions into
-    the fact_predictions DB table (avoids a Java Parquet dependency).
+    NOTE: V4 writes directly to PostgreSQL. This is kept for local dev convenience.
     """
     records = []
     for _, row in preds_df.iterrows():
         records.append({
-            "site_id":                row["site_id"],
-            "as_of_date":             str(row["as_of_date"])[:10],
-            "incident_probability_7d": float(row["incident_probability_7d"]),
-            "model_version":          row["model_version"],
-            "top_features":           row["top_features"],
+            "site_id":     row["site_id"],
+            "as_of_date":  str(row["as_of_date"])[:10],
+            "probability": float(row["probability"]),
+            "model_version": row["model_version"],
+            "top_features":  row["top_features"],
         })
     path = output_dir / "predictions_export.json"
     path.write_text(json.dumps(records, indent=2))
@@ -347,7 +461,7 @@ def main():
     )
     parser.add_argument(
         "--score", action="store_true",
-        help="Load existing pkl, score current features, write fact_predictions.parquet"
+        help="Load champion model, score current features, write to PostgreSQL"
     )
     parser.add_argument(
         "--features-path", type=str,
@@ -362,7 +476,13 @@ def main():
         "--output-dir", type=str, default=str(WAREHOUSE_DIR),
         help="Warehouse output directory"
     )
+    parser.add_argument(
+        "--write-json", action="store_true",
+        help="Also write predictions_export.json (legacy, for local dev)"
+    )
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
 
     # Default: do both if neither flag given
     do_train = args.train or (not args.train and not args.score)
@@ -396,8 +516,8 @@ def main():
         print(f"  Recall:    {report['recall']:.3f}")
         print(f"  F1:        {report['f1']:.3f}")
 
-        save_model(pipe, MODEL_PATH)
-        print(f"  Model saved → {MODEL_PATH}")
+        save_model(pipe, FALLBACK_MODEL_PATH)
+        print(f"  Model saved → {FALLBACK_MODEL_PATH}")
 
         report_path = output_dir / "backtest_report.json"
         report_path.write_text(json.dumps(report, indent=2))
@@ -412,18 +532,30 @@ def main():
             print(f"  {f['name']:35s}  {f['importance']:.4f}  {bar}")
 
     if do_score:
-        print("\n[SCORE] Loading model...")
-        pipe = load_model(MODEL_PATH)
+        print("\n[SCORE] Loading champion model...")
+        # V4: Load champion from model registry API (falls back to local pkl)
+        pipe, model_version = load_champion_model()
+        print(f"  Using model version: {model_version}")
 
-        preds_df = score_current_sites(features_df, pipe)
+        preds_df = score_current_sites(features_df, pipe, model_version)
+        
+        # V4: Write directly to PostgreSQL
+        print("[SCORE] Writing predictions to PostgreSQL...")
+        n_written = write_predictions_to_db(preds_df)
+        print(f"  Wrote {n_written} predictions to fact_predictions")
+
+        # Optionally write parquet and JSON for local dev
         preds_path = output_dir / "fact_predictions.parquet"
         preds_df.to_parquet(preds_path, index=False)
-        json_path = write_predictions_json(preds_df, output_dir)
-        print(f"  Scored {len(preds_df)} sites → {preds_path}")
-        print(f"  JSON export → {json_path}")
+        print(f"  Parquet backup → {preds_path}")
+
+        if args.write_json:
+            json_path = write_predictions_json(preds_df, output_dir)
+            print(f"  JSON export → {json_path}")
+
         print()
-        display = preds_df[["site_id", "incident_probability_7d"]].copy()
-        display["risk"] = display["incident_probability_7d"].apply(
+        display = preds_df[["site_id", "probability"]].copy()
+        display["risk"] = display["probability"].apply(
             lambda p: "HIGH" if p >= 0.70 else ("MODERATE" if p >= 0.40 else "LOW")
         )
         print(display.to_string(index=False))
