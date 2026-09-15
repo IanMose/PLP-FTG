@@ -31,9 +31,9 @@ describe("TtsCountdown", () => {
     expect(screen.getByText("1m")).toBeTruthy();
   });
 
-  test("formats 0 seconds as '0s'", () => {
+  test("formats 0 seconds as 'OVERDUE' (threshold already passed)", () => {
     render(<TtsCountdown initialSeconds={0} />);
-    expect(screen.getByText("0s")).toBeTruthy();
+    expect(screen.getByText("OVERDUE")).toBeTruthy();
   });
 
   test("counts down by 1 per second", () => {

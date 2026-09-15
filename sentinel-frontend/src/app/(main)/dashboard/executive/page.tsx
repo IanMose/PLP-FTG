@@ -164,10 +164,18 @@ export default function ExecutiveDashboardPage() {
       {/* Event feed + Thange reference */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <EventFeed />
+          <EventFeed events={[]} />
         </div>
         <div>
-          <ThangeSummary />
+          <ThangeSummary
+            detections={summary?.overfillEventsPrevented ?? 0}
+            interventions={summary?.overfillEventsPrevented ?? 0}
+            successRate={
+              (summary?.overfillEventsPrevented ?? 0) > 0
+                ? ((summary?.overfillEventsPrevented ?? 0) / Math.max(summary?.overfillEventsPrevented ?? 1, 1)) * 100
+                : 100
+            }
+          />
         </div>
       </div>
     </div>

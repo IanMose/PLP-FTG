@@ -3,12 +3,12 @@
 import { Brain, TrendingUp, Zap } from "lucide-react";
 
 interface ThangeSummaryProps {
-  detections: number;
-  interventions: number;
-  successRate: number;
+  detections?: number;
+  interventions?: number;
+  successRate?: number;
 }
 
-export function ThangeSummary({ detections, interventions, successRate }: ThangeSummaryProps) {
+export function ThangeSummary({ detections = 0, interventions = 0, successRate = 100 }: ThangeSummaryProps) {
   return (
     <div className="rounded-lg border bg-gradient-to-r from-purple-50 to-blue-50 p-6">
       <div className="flex items-start gap-4">
