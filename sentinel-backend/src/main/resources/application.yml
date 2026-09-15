@@ -50,7 +50,7 @@ sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
-    secret: Gric/GyqJGMk3dwMleaADNDcBGQ3qfOYUmPSDnXSy6lDIfYAG7cY06WPJNJp+Yor
+    secret: ${JWT_SECRET:local-dev-secret-change-in-production-minimum-32-chars}
     expiration-ms: 86400000 # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
@@ -88,6 +88,9 @@ sentinel:
 ---
 # PostgreSQL profile — local dev only
 # Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
+# 
+# HYBRID APPROACH: Flyway creates schema on first run, Hibernate validates.
+# For subsequent runs, Flyway only applies new migrations (V3+).
 spring:
   config:
     activate:
@@ -101,7 +104,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: none  # Flyway manages schema
+    show-sql: false
 
   defer-datasource-initialization: false
 
@@ -109,8 +113,8 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-    out-of-order: true
-    validate-on-migrate: false
+    baseline-version: 0
+    validate-on-migrate: false  # Don't fail on checksum changes
 
   sql:
     init:

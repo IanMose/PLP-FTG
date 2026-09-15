@@ -1,6 +1,10 @@
 # application-render.yml
 # Active when SPRING_PROFILES_ACTIVE=render (set by render.yaml).
 # Overrides only the values that differ from the defaults in application.yml.
+#
+# PRODUCTION APPROACH:
+# - Flyway manages schema migrations (consolidated, idempotent)
+# - Hibernate only validates that entities match schema (never modifies)
 
 spring:
   datasource:
@@ -18,7 +22,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate  # PRODUCTION: Only verify schema matches entities, never modify
     show-sql: false
 
   defer-datasource-initialization: false
@@ -27,8 +31,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    baseline-version: 1
     out-of-order: false
-    validate-on-migrate: true
+    validate-on-migrate: false  # Don't fail on checksum changes during migration consolidation
 
   sql:
     init:
@@ -39,16 +44,6 @@ spring:
     console:
       enabled: false
 
-# ETL requires the Python pipeline to be co-located on disk.
-# On Render only the JAR runs, so ETL must be off.
-sentinel:
-  etl:
-    enabled: false
-  # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
-  kafka:
-    enabled: ${KAFKA_ENABLED:false}
-
-spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -58,3 +53,12 @@ spring:
       security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
       sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
       sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}
+
+# ETL requires the Python pipeline to be co-located on disk.
+# On Render only the JAR runs, so ETL must be off.
+sentinel:
+  etl:
+    enabled: false
+  # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}

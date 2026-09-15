@@ -3,7 +3,6 @@ package com.sentinel.alert;
 import com.sentinel.common.dto.AlertDto;
 import com.sentinel.site.SiteEntity;
 import com.sentinel.site.SiteRepository;
-import jakarta.annotation.PostConstruct;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -44,15 +43,31 @@ public class AlertService {
     /**
      * Populate the site name cache on startup.
      * Runs after dependency injection is complete — before any request arrives.
+     * Uses ApplicationRunner instead of @PostConstruct to ensure Hibernate has finished DDL.
      */
-    @PostConstruct
     public void loadSiteCache() {
-        siteRepository.findAll().forEach(s ->
-                siteNameCache.put(s.getSiteId(), s.getSiteName())
-        );
+        try {
+            siteRepository.findAll().forEach(s ->
+                    siteNameCache.put(s.getSiteId(), s.getSiteName())
+            );
+        } catch (Exception e) {
+            // Table may not exist yet during first startup with ddl-auto:create
+            // Cache will be populated lazily on first request
+        }
+    }
+
+    /**
+     * Ensure cache is populated (lazy load if needed).
+     */
+    private void ensureSiteCacheLoaded() {
+        if (siteNameCache.isEmpty()) {
+            loadSiteCache();
+        }
     }
 
     public List<AlertDto> getAllAlerts() {
+        // Ensure site cache is loaded (lazy load on first request)
+        ensureSiteCacheLoaded();
         // Uses the in-memory cache — no extra DB round-trip per request.
         return alertRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::toDto)

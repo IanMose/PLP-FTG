@@ -4,6 +4,7 @@ import com.sentinel.site.AuditRepository;
 import com.sentinel.site.IncidentEntity;
 import com.sentinel.site.IncidentRepository;
 import com.sentinel.telemetry.TelemetryRepository;
+import com.sentinel.telemetry.TankTelemetryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -66,6 +68,7 @@ public class NarrativeService {
     private final AuditRepository auditRepository;
     private final IncidentRepository incidentRepository;
     private final TelemetryRepository telemetryRepository;
+    private final TankTelemetryRepository tankTelemetryRepository;
 
     // ── Groq LLM config ───────────────────────────────────────────────────────
     // All fields have safe defaults — if groqApiKey is blank the LLM path is
@@ -92,9 +95,121 @@ public class NarrativeService {
         "as given. Do NOT add speculation or new information. Aim for 3-5 concise sentences. " +
         "Do not include greetings, headers, or sign-offs — return only the narrative text.";
 
+    private static final String OVERFILL_SYSTEM_PROMPT =
+        "You are an AI safety analyst for Kenya Pipeline Company (KPC) writing real-time incident briefs. " +
+        "Rewrite the following overfill incident narrative in 4-6 clear, direct sentences that a KPC operations " +
+        "manager can act on immediately. Preserve all numbers, times, event IDs, tank IDs, site names, and the " +
+        "Kimeu v. KPC legal reference exactly as given. Lead with what happened and the automated response time. " +
+        "Include the site history context and the Thange/Kimeu connection where present. " +
+        "Do not speculate, add information, use greetings, headers, or sign-offs. Return only the narrative text.";
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Public API — one method per rule
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * AI Incident Analyst — generates a rich, context-aware narrative for an
+     * overfill event. Pulls live site history, near-miss count, and Thange
+     * connection, then enhances with Groq LLM.
+     *
+     * Used by: DemoController (demo trigger), EventService (auto-detection),
+     *          SlackNotificationService (AI Analysis block).
+     *
+     * @param siteId      site where the overfill was detected
+     * @param tankId      tank identifier
+     * @param levelPct    tank fill level at detection time (e.g. 96.5)
+     * @param eventId     event log reference ID
+     * @param actuationId actuation log reference ID (may be null)
+     * @param latencyMs   time-to-shutdown in milliseconds
+     */
+    public String forOverfillEvent(String siteId, String tankId, double levelPct,
+                                   String eventId, String actuationId, long latencyMs) {
+        try {
+            String site = displayName(siteId);
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime since30d = now.minusDays(30);
+
+            // Site history context
+            long incidentsLast30 = safeIncidentCount(siteId, 30);
+            long nearMissesLast30 = safeNearMissCount(siteId, 30);
+            long previousOverfills = safePreviousOverfillCount(siteId);
+            boolean isKimeuWatch = KIMEU_WATCH_SITES.contains(siteId);
+            Optional<String> latestAudit = safeLatestAuditDate(siteId);
+            int daysSinceAudit = latestAudit.map(d -> {
+                try {
+                    LocalDate auditDate = LocalDate.parse(d.substring(0, 10));
+                    return (int) ChronoUnit.DAYS.between(auditDate, LocalDate.now());
+                } catch (Exception ignored) { return -1; }
+            }).orElse(-1);
+
+            // Severity label
+            String severity = levelPct >= 98.0 ? "CRITICAL" : levelPct >= 96.0 ? "HIGH" : "MEDIUM";
+            String severityEmoji = levelPct >= 98.0 ? "🔴" : "🟠";
+
+            StringBuilder sb = new StringBuilder();
+
+            // Lead: what happened
+            sb.append(String.format(
+                "%s OVERFILL RISK — %s SEVERITY. Tank %s at %s reached %.1f%% capacity " +
+                "with valve in OPEN position at %s UTC. ",
+                severityEmoji, severity, tankId, site, levelPct,
+                now.format(DateTimeFormatter.ofPattern("HH:mm:ss"))));
+
+            // Automated response
+            if (actuationId != null) {
+                sb.append(String.format(
+                    "Sentinel autonomous control plane detected the breach and triggered a simulated " +
+                    "valve shutdown in %.1f seconds (ref: %s). ",
+                    latencyMs / 1000.0, actuationId));
+            }
+
+            // Site history: near-misses and incidents
+            if (nearMissesLast30 > 0 || incidentsLast30 > 0) {
+                sb.append(String.format(
+                    "Site history (last 30 days): %d incident(s) and %d near-miss event(s) — " +
+                    "this overfill event is not isolated, it fits a pattern of escalating risk at this facility. ",
+                    incidentsLast30, nearMissesLast30));
+            }
+            if (previousOverfills > 0) {
+                sb.append(String.format(
+                    "This site has recorded %d prior overfill event(s) in the Sentinel system. ",
+                    previousOverfills));
+            }
+
+            // Thange / Kimeu connection — only for watch-list sites
+            if (isKimeuWatch) {
+                sb.append(
+                    "⚑ THANGE WATCH LIST: this is the Makueni Pipeline Section (Thange), " +
+                    "the exact site implicated in the Kimeu & 3,074 others v. Kenya Pipeline Company Ltd " +
+                    "judgment ([2025] KEELC 5239, gross award KES 3.02B). " +
+                    "The Thange spill (12 May 2015) resulted from a tank/pipeline overfill that ran " +
+                    "for hours before action was taken. " +
+                    "Sentinel's automated response time: " + String.format("%.1f", latencyMs / 1000.0) +
+                    "s — vs. hours in that incident. ");
+            }
+
+            // Audit status
+            if (daysSinceAudit > 14) {
+                sb.append(String.format(
+                    "⚠ Last compliance audit was %d days ago — this site is overdue for inspection. " +
+                    "Combined with this overfill event, a field audit within 24 hours is recommended. ",
+                    daysSinceAudit));
+            }
+
+            // Event reference
+            sb.append(String.format("Event ref: %s.", eventId));
+
+            // Send to Groq with overfill-specific system prompt
+            return enhanceWithLlm(sb.toString(), OVERFILL_SYSTEM_PROMPT);
+
+        } catch (Exception ex) {
+            log.warn("NarrativeService: fallback narrative for overfill event site={}", siteId, ex);
+            return String.format(
+                "Overfill risk at %s: Tank %s reached %.1f%% capacity with valve open. " +
+                "Auto-shutdown triggered in %.1fs. Event ref: %s.",
+                displayName(siteId), tankId, levelPct, latencyMs / 1000.0, eventId);
+        }
+    }
 
     /**
      * Generate a narrative for RULE_HAZARD_REPORT_RISK_RATING.
@@ -436,6 +551,14 @@ public class NarrativeService {
      * Hard timeout: 3 seconds. Alert creation is never blocked by this call.
      */
     private String enhanceWithLlm(String templateNarrative) {
+        return enhanceWithLlm(templateNarrative, LLM_SYSTEM_PROMPT);
+    }
+
+    /**
+     * Overload — allows callers to pass a custom system prompt for domain-specific
+     * tone and instruction (e.g. the overfill-specific prompt).
+     */
+    private String enhanceWithLlm(String templateNarrative, String systemPrompt) {
         if (!llmEnabled || groqApiKey == null || groqApiKey.isBlank()) {
             return templateNarrative;
         }
@@ -456,7 +579,7 @@ public class NarrativeService {
             );
             Map<String, Object> systemMessage = Map.of(
                 "role", "system",
-                "content", LLM_SYSTEM_PROMPT
+                "content", systemPrompt
             );
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", groqModel);
@@ -535,6 +658,30 @@ public class NarrativeService {
         } catch (Exception ex) {
             log.debug("NarrativeService: could not query audit date for site={}", siteId);
             return Optional.empty();
+        }
+    }
+
+    private long safeNearMissCount(String siteId, int days) {
+        try {
+            LocalDateTime since = LocalDateTime.now().minusDays(days);
+            // Near-misses are incidents with severity "Near Miss" or "Low" that were flagged
+            return incidentRepository.countBySiteIdAndSeverityInAndIncidentDateAfter(
+                siteId,
+                java.util.List.of("Near Miss", "Low", "near_miss"),
+                since
+            );
+        } catch (Exception ex) {
+            log.debug("NarrativeService: could not query near-miss count for site={}", siteId);
+            return 0L;
+        }
+    }
+
+    private long safePreviousOverfillCount(String siteId) {
+        try {
+            return tankTelemetryRepository.countOverfillEventsBySite(siteId);
+        } catch (Exception ex) {
+            log.debug("NarrativeService: could not query previous overfill count for site={}", siteId);
+            return 0L;
         }
     }
 }
