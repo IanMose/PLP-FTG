@@ -3,10 +3,13 @@ FROM eclipse-temurin:21-jdk-alpine AS build
 
 WORKDIR /app
 
+# Install curl (needed by Maven wrapper to download Maven)
+RUN apk add --no-cache curl
+
 # Copy the Maven wrapper and POM first so Docker can cache the dependency layer
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN ./mvnw dependency:go-offline -q
+RUN chmod +x mvnw && ./mvnw dependency:go-offline -q
 
 # Copy source and build the fat JAR (skip tests — they need a DB)
 COPY src/ src/
