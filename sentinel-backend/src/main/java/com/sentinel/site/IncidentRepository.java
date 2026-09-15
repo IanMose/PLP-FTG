@@ -54,4 +54,14 @@ public interface IncidentRepository extends JpaRepository<IncidentEntity, String
 
     @Query("SELECT COUNT(i) FROM IncidentEntity i")
     long countAll();
+
+    /**
+     * Count near-miss or low-severity incidents at a site since a given timestamp.
+     * Used by NarrativeService to enrich overfill narratives with near-miss context.
+     */
+    @Query("SELECT COUNT(i) FROM IncidentEntity i WHERE i.siteId = :siteId AND i.severity IN :severities AND i.incidentDate > :since")
+    long countBySiteIdAndSeverityInAndIncidentDateAfter(
+        @Param("siteId") String siteId,
+        @Param("severities") java.util.List<String> severities,
+        @Param("since") LocalDateTime since);
 }
