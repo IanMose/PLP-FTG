@@ -447,7 +447,7 @@ export default function EsgReportPage() {
             label="Communities Protected"
             value={isLoading ? "—" : (s?.communitiesProtected ?? 7)}
             sub="Sites with active community risk exposure"
-            highlight="blue"
+            highlight="neutral"
           />
         </div>
 
