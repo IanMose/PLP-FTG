@@ -15,6 +15,7 @@ import java.util.List;
 public class CapaController {
 
     private final CapaService service;
+    private final AiCapaService aiCapaService;
     private final AppUserRepository userRepo;
 
     @PostMapping
@@ -22,6 +23,46 @@ public class CapaController {
     public ResponseEntity<CapaDto> create(@RequestBody CreateCapaRequest req) {
         return ResponseEntity.ok(service.createCapa(req));
     }
+
+    /**
+     * POST /api/capas/ai-draft
+     *
+     * Returns an AI-generated CAPA draft (description, rootCause, suggestedActions)
+     * WITHOUT saving anything. The frontend pre-fills the create form with this data.
+     *
+     * Query params (at least one required):
+     *   alertId  — generate from an existing alert
+     *   eventId  — generate from an existing event
+     *
+     * Body (optional, used when no alertId/eventId):
+     *   { "siteId": "site-003", "description": "...", "severity": "High" }
+     */
+    @PostMapping("/ai-draft")
+    public ResponseEntity<AiCapaService.AiCapaDraft> aiDraft(
+            @RequestParam(required = false) String alertId,
+            @RequestParam(required = false) String eventId,
+            @RequestBody(required = false) AiDraftRequest body) {
+
+        AiCapaService.AiCapaDraft draft;
+
+        if (alertId != null && !alertId.isBlank()) {
+            draft = aiCapaService.draftFromAlert(alertId);
+        } else if (eventId != null && !eventId.isBlank()) {
+            draft = aiCapaService.draftFromEvent(eventId);
+        } else if (body != null) {
+            draft = aiCapaService.draftFromContext(
+                body.siteId(),
+                body.description(),
+                body.severity() != null ? body.severity() : "High"
+            );
+        } else {
+            return ResponseEntity.badRequest().build();
+        }
+
+        return ResponseEntity.ok(draft);
+    }
+
+    record AiDraftRequest(String siteId, String description, String severity) {}
 
     @GetMapping
     public ResponseEntity<List<CapaDto>> list(Authentication auth) {

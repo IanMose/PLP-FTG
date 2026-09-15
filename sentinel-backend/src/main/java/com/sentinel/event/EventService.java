@@ -1,6 +1,7 @@
 package com.sentinel.event;
 
 import com.sentinel.actuation.ActuationService;
+import com.sentinel.alert.NarrativeService;
 import com.sentinel.alert.SlackNotificationService;
 import com.sentinel.alert.SmsNotificationService;
 import com.sentinel.telemetry.TankTelemetryEntity;
@@ -37,6 +38,7 @@ public class EventService {
     private final ActuationService actuationService;
     private final SlackNotificationService slackService;
     private final SmsNotificationService smsService;
+    private final NarrativeService narrativeService;
 
     // ── Detection Methods ──────────────────────────────────────────────────────
 
@@ -158,18 +160,20 @@ public class EventService {
     /**
      * Process an event through the complete control loop:
      * 1. Trigger actuation if required (valve close)
-     * 2. Send Slack notification
-     * 3. Mark as processed
-     * 
+     * 2. Generate AI narrative via NarrativeService + Groq
+     * 3. Send Slack notification with AI narrative
+     * 4. Send SMS for Critical events
+     * 5. Mark as processed
+     *
      * Returns a ProcessingResult with status of each step.
      */
     @Transactional
     public EventProcessingResult processEvent(EventEntity event) {
         log.info("Processing event {}: {}", event.getEventId(), event.getDescription());
-        
+
         EventProcessingResult result = new EventProcessingResult(event.getEventId());
         ActuationService.ActuationResult actuationResult = null;
-        
+
         // Step 1: Trigger actuation if required
         if (event.requiresActuation()) {
             actuationResult = triggerActuation(event);
@@ -179,23 +183,44 @@ public class EventService {
             result.setLatencyMs(actuationResult.latencyMs());
             event.markActuationTriggered();
         }
-        
-        // Step 2: Send Slack notification (and SMS for Critical)
-        NotificationResult notifResult = sendNotifications(event, actuationResult);
+
+        // Step 2: Generate AI narrative (non-blocking — falls back to template silently)
+        String aiNarrative = null;
+        try {
+            double levelPct = event.getSignalValue() != null ? event.getSignalValue().doubleValue() : 0.0;
+            long latencyMs = actuationResult != null ? actuationResult.latencyMs() : 0L;
+            String actuationId = actuationResult != null ? actuationResult.actuationId() : null;
+            aiNarrative = narrativeService.forOverfillEvent(
+                event.getSiteId(),
+                event.getTankId(),
+                levelPct,
+                event.getEventId(),
+                actuationId,
+                latencyMs
+            );
+            result.setAiNarrative(aiNarrative);
+        } catch (Exception ex) {
+            log.debug("EventService: AI narrative generation skipped: {}", ex.getMessage());
+        }
+
+        // Step 3: Send notifications (Slack + SMS for Critical)
+        NotificationResult notifResult = sendNotifications(event, actuationResult, aiNarrative);
         result.setNotificationSent(true);
         result.setNotificationSuccess(notifResult.slackSuccess);
         result.setSmsAttempted(notifResult.smsAttempted);
         result.setSmsSuccess(notifResult.smsSuccess);
         event.markNotificationSent();
-        
-        // Step 3: Mark as processed
+
+        // Step 4: Mark as processed
         event.markProcessed();
         eventRepository.save(event);
-        
+
         result.setProcessed(true);
-        log.info("Event {} processed: actuation={}, notification={}", 
-            event.getEventId(), result.isActuationSuccess(), result.isNotificationSuccess());
-        
+        log.info("Event {} processed: actuation={}, notification={}, sms={}, aiNarrative={}",
+            event.getEventId(), result.isActuationSuccess(), result.isNotificationSuccess(),
+            result.isSmsSuccess(),
+            aiNarrative != null ? "yes (" + aiNarrative.length() + " chars)" : "none");
+
         return result;
     }
 
@@ -228,16 +253,17 @@ public class EventService {
 
     /**
      * Send notifications for an event via Slack and SMS (for Critical).
+     * Passes AI narrative to Slack for the "AI Analysis" block.
      * Returns a result object with status of both channels.
      */
-    private NotificationResult sendNotifications(EventEntity event, ActuationService.ActuationResult actuationResult) {
+    private NotificationResult sendNotifications(EventEntity event, ActuationService.ActuationResult actuationResult, String aiNarrative) {
         log.info("Sending notifications for event {} - {} at {}", 
             event.getEventId(), event.getEventType(), event.getSiteId());
         
         NotificationResult result = new NotificationResult();
         
-        // Primary channel: Slack
-        result.slackSuccess = slackService.sendOverfillAlert(event, actuationResult);
+        // Primary channel: Slack with AI narrative
+        result.slackSuccess = slackService.sendOverfillAlert(event, actuationResult, aiNarrative);
         
         // Secondary channel: SMS for Critical events only
         // SMS failure never affects Slack notification or alert processing
@@ -334,6 +360,7 @@ public class EventService {
         private boolean smsAttempted;
         private boolean smsSuccess;
         private boolean processed;
+        private String aiNarrative;
 
         public EventProcessingResult(String eventId) {
             this.eventId = eventId;

@@ -48,22 +48,30 @@ public class SlackNotificationService {
     // ── Main Notification Methods ──────────────────────────────────────────────
 
     /**
-     * Send alert notification for an overfill event.
+     * Send alert notification for an overfill event WITH AI-generated narrative.
+     * The narrative appears as a dedicated "AI Analysis" section in the Slack message.
      * Returns true if sent successfully, false otherwise.
      */
-    public boolean sendOverfillAlert(EventEntity event, ActuationService.ActuationResult actuationResult) {
+    public boolean sendOverfillAlert(EventEntity event, ActuationService.ActuationResult actuationResult, String aiNarrative) {
         if (!enabled || webhookUrl.isBlank()) {
-            log.info("Slack notifications disabled - would send overfill alert for event {}", event.getEventId());
-            return true; // Return true so caller doesn't think it failed
+            log.info("Slack notifications disabled - would send overfill alert for event {} with AI narrative", event.getEventId());
+            return true;
         }
-
         try {
-            Map<String, Object> payload = buildOverfillAlertPayload(event, actuationResult);
+            Map<String, Object> payload = buildOverfillAlertPayload(event, actuationResult, aiNarrative);
             return sendToSlack(payload);
         } catch (Exception e) {
             log.error("Failed to send Slack notification for event {}: {}", event.getEventId(), e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Send alert notification for an overfill event (no AI narrative — legacy overload).
+     * Returns true if sent successfully, false otherwise.
+     */
+    public boolean sendOverfillAlert(EventEntity event, ActuationService.ActuationResult actuationResult) {
+        return sendOverfillAlert(event, actuationResult, null);
     }
 
     /**
@@ -109,84 +117,110 @@ public class SlackNotificationService {
 
     /**
      * Build rich Slack Block Kit payload for overfill alert with actuation result.
+     * When aiNarrative is provided it appears as a highlighted "AI Analysis" section.
      */
     private Map<String, Object> buildOverfillAlertPayload(
-            EventEntity event, 
-            ActuationService.ActuationResult actuationResult) {
-        
+            EventEntity event,
+            ActuationService.ActuationResult actuationResult,
+            String aiNarrative) {
+
         String severityEmoji = getSeverityEmoji(event.getSeverity());
         String actuationEmoji = actuationResult != null && actuationResult.success() ? ":white_check_mark:" : ":x:";
-        String actuationStatus = actuationResult != null 
+        String actuationStatus = actuationResult != null
             ? (actuationResult.success() ? "Valve Closed Successfully" : "Valve Close Failed: " + actuationResult.errorMessage())
             : "No actuation triggered";
 
-        List<Map<String, Object>> blocks = List.of(
-            // Header
-            Map.of(
-                "type", "header",
-                "text", Map.of(
-                    "type", "plain_text",
-                    "text", severityEmoji + " Overfill Risk Detected",
-                    "emoji", true
-                )
-            ),
-            // Event Details Section
-            Map.of(
-                "type", "section",
-                "fields", List.of(
-                    Map.of("type", "mrkdwn", "text", "*Site:*\n" + event.getSiteId()),
-                    Map.of("type", "mrkdwn", "text", "*Tank:*\n" + event.getTankId()),
-                    Map.of("type", "mrkdwn", "text", "*Tank Level:*\n" + formatLevel(event.getSignalValue()) + "%"),
-                    Map.of("type", "mrkdwn", "text", "*Severity:*\n" + event.getSeverity()),
-                    Map.of("type", "mrkdwn", "text", "*Event ID:*\n" + event.getEventId()),
-                    Map.of("type", "mrkdwn", "text", "*Time:*\n" + event.getCreatedAt().format(TIME_FORMAT))
-                )
-            ),
-            // Divider
-            Map.of("type", "divider"),
-            // Actuation Status Section
-            Map.of(
+        // Build blocks list — AI narrative block inserted between actuation and footer
+        java.util.List<Map<String, Object>> blocks = new java.util.ArrayList<>();
+
+        // Header
+        blocks.add(Map.of(
+            "type", "header",
+            "text", Map.of(
+                "type", "plain_text",
+                "text", severityEmoji + " Overfill Risk Detected — Sentinel Auto-Response",
+                "emoji", true
+            )
+        ));
+
+        // Event Details
+        blocks.add(Map.of(
+            "type", "section",
+            "fields", List.of(
+                Map.of("type", "mrkdwn", "text", "*Site:*\n" + event.getSiteId()),
+                Map.of("type", "mrkdwn", "text", "*Tank:*\n" + event.getTankId()),
+                Map.of("type", "mrkdwn", "text", "*Tank Level:*\n" + formatLevel(event.getSignalValue()) + "%"),
+                Map.of("type", "mrkdwn", "text", "*Severity:*\n" + event.getSeverity()),
+                Map.of("type", "mrkdwn", "text", "*Event ID:*\n" + event.getEventId()),
+                Map.of("type", "mrkdwn", "text", "*Time:*\n" + event.getCreatedAt().format(TIME_FORMAT) + " UTC")
+            )
+        ));
+
+        // Divider
+        blocks.add(Map.of("type", "divider"));
+
+        // Actuation Status
+        blocks.add(Map.of(
+            "type", "section",
+            "text", Map.of(
+                "type", "mrkdwn",
+                "text", actuationEmoji + " *Automated Response:* " + actuationStatus
+            )
+        ));
+
+        // AI Analysis block — only shown when narrative is present
+        if (aiNarrative != null && !aiNarrative.isBlank()) {
+            blocks.add(Map.of("type", "divider"));
+            blocks.add(Map.of(
                 "type", "section",
                 "text", Map.of(
                     "type", "mrkdwn",
-                    "text", actuationEmoji + " *Automated Response:* " + actuationStatus
+                    "text", ":robot_face: *AI Incident Analysis*\n" + aiNarrative
                 )
-            ),
-            // Context with Thange connection
-            Map.of(
-                "type", "context",
-                "elements", List.of(
-                    Map.of(
-                        "type", "mrkdwn",
-                        "text", ":brain: *Thange Judgment:* Tank level breach detected by ML model. Automated valve closure initiated to prevent spill."
-                    )
-                )
-            ),
-            // Dashboard Link Button
-            Map.of(
-                "type", "actions",
-                "elements", List.of(
-                    Map.of(
-                        "type", "button",
-                        "text", Map.of(
-                            "type", "plain_text",
-                            "text", "View in Dashboard",
-                            "emoji", true
-                        ),
-                        "url", dashboardUrl + "/executive",
-                        "style", "primary"
-                    )
+            ));
+        }
+
+        // Footer context — Sinai / Thange reference
+        blocks.add(Map.of(
+            "type", "context",
+            "elements", List.of(
+                Map.of(
+                    "type", "mrkdwn",
+                    "text", ":warning: *Sinai Context:* The 2011 Nairobi Sinai fire (~100 lives) began as an undetected valve failure at a KPC tank. " +
+                            "Sentinel detected this breach and auto-closed the valve. Prevention is digital."
                 )
             )
-        );
+        ));
+
+        // Dashboard Link
+        blocks.add(Map.of(
+            "type", "actions",
+            "elements", List.of(
+                Map.of(
+                    "type", "button",
+                    "text", Map.of("type", "plain_text", "text", "View in Dashboard", "emoji", true),
+                    "url", dashboardUrl + "/dashboard/control-plane/demo",
+                    "style", "primary"
+                )
+            )
+        ));
 
         return Map.of(
             "channel", channel,
             "blocks", blocks,
-            "text", String.format("Overfill risk at %s - Tank %s at %.1f%%", 
-                event.getSiteId(), event.getTankId(), 
+            "text", String.format("Overfill risk at %s - Tank %s at %.1f%% — auto-shutdown triggered",
+                event.getSiteId(), event.getTankId(),
                 event.getSignalValue() != null ? event.getSignalValue().doubleValue() : 0.0)
         );
+    }
+
+    /**
+     * Legacy overload — no AI narrative.
+     */
+    private Map<String, Object> buildOverfillAlertPayload(
+            EventEntity event,
+            ActuationService.ActuationResult actuationResult) {
+        return buildOverfillAlertPayload(event, actuationResult, null);
     }
 
     /**

@@ -137,4 +137,16 @@ public interface TankTelemetryRepository extends JpaRepository<TankTelemetryEnti
      * Count all readings after a timestamp.
      */
     long countByReadingTimestampAfter(LocalDateTime since);
+
+    /**
+     * Count total overfill events (distinct loading operations) ever recorded for a site.
+     * Used by NarrativeService to surface site-level overfill history in AI narratives.
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT t.loadingOperationId) FROM TankTelemetryEntity t
+        WHERE t.siteId = :siteId
+          AND t.tankLevelPct >= 95.0
+          AND t.valveStatus = 'Open'
+        """)
+    long countOverfillEventsBySite(@Param("siteId") String siteId);
 }

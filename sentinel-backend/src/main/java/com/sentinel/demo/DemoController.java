@@ -98,20 +98,25 @@ public class DemoController {
                         result.getLatencyMs()),
                     System.currentTimeMillis() - startTime));
 
-                steps.add(new DemoStep(5, "Notification Sent",
-                    result.isNotificationSuccess() 
-                        ? "Slack alert sent to #sentinel-alerts"
-                        : "Slack notification queued (check config)",
+                String notifDetail = result.isNotificationSuccess()
+                    ? "Slack alert sent to #sentinel-alerts"
+                    : "Slack notification queued (check config)";
+                if (result.getAiNarrative() != null) {
+                    notifDetail += " — AI narrative included";
+                }
+                steps.add(new DemoStep(5, "Notification Sent", notifDetail,
                     System.currentTimeMillis() - startTime));
 
                 long totalTime = System.currentTimeMillis() - startTime;
-                log.info("=== DEMO COMPLETE === Total time: {}ms, Steps: {}", totalTime, steps.size());
+                log.info("=== DEMO COMPLETE === Total time: {}ms, Steps: {}, AI narrative: {}",
+                    totalTime, steps.size(), result.getAiNarrative() != null ? "yes" : "no");
 
                 return ResponseEntity.ok(new DemoResult(
                     true,
                     "Demo completed successfully - overfill detected, valve closed, notification sent",
                     event.getEventId(),
                     result.getActuationId(),
+                    result.getAiNarrative(),
                     steps,
                     totalTime
                 ));
@@ -124,6 +129,7 @@ public class DemoController {
                 return ResponseEntity.ok(new DemoResult(
                     true,
                     "Telemetry recorded but event was deduplicated (already processed)",
+                    null,
                     null,
                     null,
                     steps,
@@ -139,6 +145,7 @@ public class DemoController {
             return ResponseEntity.internalServerError().body(new DemoResult(
                 false,
                 "Demo failed: " + e.getMessage(),
+                null,
                 null,
                 null,
                 steps,
@@ -235,6 +242,7 @@ public class DemoController {
         String message,
         String eventId,
         String actuationId,
+        String aiNarrative,
         List<DemoStep> steps,
         long totalTimeMs
     ) {}
