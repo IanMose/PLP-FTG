@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Volume2, VolumeX, Siren } from "lucide-react";
 import { useAlertSound } from "@/hooks/use-alert-sound";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,29 @@ import { cn } from "@/lib/utils";
  */
 export function AlertSoundToggle() {
   const { muted, toggleMute, playAlert } = useAlertSound();
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering after client mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Render a placeholder during SSR to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled
+          aria-label="Loading sound controls"
+          className="size-9 shrink-0"
+        >
+          <VolumeX className="size-4 text-muted-foreground" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1">
