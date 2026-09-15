@@ -15,10 +15,10 @@ interface EventSummary {
 }
 
 interface EventFeedProps {
-  events: EventSummary[];
+  events?: EventSummary[];
 }
 
-export function EventFeed({ events }: EventFeedProps) {
+export function EventFeed({ events = [] }: EventFeedProps) {
   if (events.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-6">

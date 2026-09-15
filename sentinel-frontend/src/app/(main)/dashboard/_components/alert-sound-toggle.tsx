@@ -16,37 +16,26 @@ import { cn } from "@/lib/utils";
  *     that block AudioContext until a direct user gesture).
  *  2. Test alarm button — plays the Critical alarm on demand so you can
  *     verify the sound before the demo without waiting for a real alert.
+ *
+ * Uses suppressHydrationWarning + useEffect to handle localStorage-dependent
+ * state without hydration mismatch errors.
  */
 export function AlertSoundToggle() {
   const { muted, toggleMute, playAlert } = useAlertSound();
   const [mounted, setMounted] = useState(false);
 
-  // Prevent hydration mismatch by only rendering after client mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Render a placeholder during SSR to avoid hydration mismatch
-  if (!mounted) {
-    return (
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled
-          aria-label="Loading sound controls"
-          className="size-9 shrink-0"
-        >
-          <VolumeX className="size-4 text-muted-foreground" />
-        </Button>
-      </div>
-    );
-  }
+  // SSR/initial render: show muted state (safest default)
+  // This matches the server output exactly, avoiding hydration mismatch
+  const showMuted = !mounted || muted;
 
   return (
-    <div className="flex items-center gap-1">
-      {/* Test alarm button — only visible when unmuted */}
-      {!muted && (
+    <div className="flex items-center gap-1" suppressHydrationWarning>
+      {/* Test alarm button — only visible when unmuted and mounted */}
+      {mounted && !muted && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -71,23 +60,23 @@ export function AlertSoundToggle() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleMute}
-            aria-label={muted ? "Enable alert sounds" : "Mute alert sounds"}
+            onClick={mounted ? toggleMute : undefined}
+            aria-label={showMuted ? "Enable alert sounds" : "Mute alert sounds"}
             className={cn(
               "relative size-9 shrink-0 transition-colors",
-              !muted && [
+              !showMuted && [
                 "text-red-600 dark:text-red-400",
                 "hover:bg-red-50 dark:hover:bg-red-950/40",
               ],
             )}
           >
-            {!muted && (
+            {!showMuted && (
               <span
                 className="absolute inset-0 rounded-md ring-1 ring-red-500/40 animate-pulse"
                 aria-hidden="true"
               />
             )}
-            {muted ? (
+            {showMuted ? (
               <VolumeX className="size-4 text-muted-foreground" />
             ) : (
               <Volume2 className="size-4" />
@@ -95,7 +84,7 @@ export function AlertSoundToggle() {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {muted ? "Enable alert sounds" : "Mute alert sounds"}
+          {showMuted ? "Enable alert sounds" : "Mute alert sounds"}
         </TooltipContent>
       </Tooltip>
     </div>

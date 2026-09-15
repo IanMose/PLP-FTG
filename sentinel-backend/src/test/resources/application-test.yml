@@ -1,0 +1,49 @@
+# application-test.yml
+# Active when @ActiveProfiles("test") is used in integration tests.
+# Datasource is injected dynamically by Testcontainers via @DynamicPropertySource.
+
+spring:
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    out-of-order: false
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+  sql:
+    init:
+      mode: never
+
+  h2:
+    console:
+      enabled: false
+
+sentinel:
+  etl:
+    enabled: false
+    poll-interval-ms: 999999999
+
+  jwt:
+    secret: test-secret-value-that-is-at-least-32-characters-long
+    expiration-ms: 3600000
+
+  features:
+    tank-telemetry-enabled: false
+
+  slack:
+    webhook-url: ""
+    enabled: false
+
+  llm:
+    enabled: false
+
+  kafka:
+    enabled: false
+
+logging:
+  level:
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
