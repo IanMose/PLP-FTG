@@ -23,13 +23,9 @@ export function RiskAssessmentForm({ hazardId }: { hazardId: string }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-      const res = await fetch(`${API_BASE}/api/hazard-reports/${hazardId}/risk-assessment`, {
+      const res = await fetch(`/api/proxy/hazards/${hazardId}/risk-assessment`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ likelihoodRating: likelihood, severityRating: severity, mitigationNote }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

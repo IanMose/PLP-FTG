@@ -1,5 +1,5 @@
 {
-  "name": "studio-admin",
+  "name": "sentinel-frontend",
   "version": "2.2.0",
   "private": true,
   "packageManager": "pnpm@9.15.0",
@@ -27,6 +27,7 @@
     "@fullcalendar/react": "^7.0.1",
     "@hookform/resolvers": "^5.4.0",
     "@shadcn/react": "^0.1.0",
+    "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -41,6 +42,7 @@
     "lucide-react": "^1.25.0",
     "next": "^16.2.11",
     "next-themes": "^0.4.6",
+    "number-flow": "^0.6.2",
     "radix-ui": "^1.6.4",
     "react": "^19.2.8",
     "react-day-picker": "^10.0.1",

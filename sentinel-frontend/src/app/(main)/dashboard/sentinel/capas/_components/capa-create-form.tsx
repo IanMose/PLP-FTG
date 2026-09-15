@@ -32,10 +32,8 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
 
   useEffect(() => {
     if (!open) return;
-    const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-    fetch(`${API_BASE}/api/technicians`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    fetch("/api/proxy/capas/technicians", { cache: "no-store" })
+      .catch(() => fetch(`${API_BASE}/api/technicians`))
       .then((r) => r.json())
       .then(setTechnicians)
       .catch(() => {});
@@ -48,13 +46,9 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
     }
     setLoading(true);
     try {
-      const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-      const res = await fetch(`${API_BASE}/api/capas`, {
+      const res = await fetch("/api/proxy/capas", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, ownerId: Number(form.ownerId) }),
       });
       if (!res.ok) {
