@@ -8,7 +8,7 @@ interface ThangeSummaryProps {
   successRate?: number;
 }
 
-export function ThangeSummary({ detections = 0, interventions = 0, successRate = 0 }: ThangeSummaryProps) {
+export function ThangeSummary({ detections = 0, interventions = 0, successRate = 100 }: ThangeSummaryProps) {
   return (
     <div className="rounded-lg border bg-gradient-to-r from-purple-50 to-blue-50 p-6">
       <div className="flex items-start gap-4">
