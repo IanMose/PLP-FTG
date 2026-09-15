@@ -55,7 +55,8 @@ public class DataSeeder implements ApplicationRunner {
 
     /** RBAC roles seeded in order — used by both Flyway (Postgres) and JPA (H2) profiles. */
     private static final List<String> ROLE_NAMES = List.of(
-        "Admin", "HSE Manager", "Auditor", "Analyst", "Viewer"
+        "Admin", "HSE Manager", "Auditor", "Analyst", "Viewer",
+        "Field Technician", "Station Manager", "ML Admin"
     );
 
     @Override

@@ -124,6 +124,14 @@ export const sidebarItems: NavGroup[] = [
         badge: "new",
       },
       {
+        id: "hse-reports",
+        title: "HSE Reports",
+        url: "/dashboard/hse-reports",
+        icon: ShieldAlert,
+        badge: "new",
+        roles: ["Admin", "HSE Manager", "Auditor", "Analyst"],
+      },
+      {
         id: "live-demo",
         title: "Live Demo",
         url: "/dashboard/demo",
