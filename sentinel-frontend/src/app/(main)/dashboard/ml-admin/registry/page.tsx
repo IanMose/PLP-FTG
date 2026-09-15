@@ -32,9 +32,6 @@ import {
 import { cn } from "@/lib/utils";
 import { fetchModelComparison, type FeatureImportanceDiffEntry } from "@/lib/sentinel/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-const getToken = () => document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-
 const STATUS_STYLES: Record<string, string> = {
   champion:   "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   challenger: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
@@ -136,9 +133,7 @@ export default function ModelRegistryPage() {
   const [rejectNote, setRejectNote] = useState("");
 
   const load = () => {
-    fetch(`${API_BASE}/api/ml/model-registry`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    })
+    fetch('/api/proxy/ml/model-registry')
       .then((r) => r.json())
       .then((data) => {
         // Handle both array response and object with nested array
@@ -163,9 +158,8 @@ export default function ModelRegistryPage() {
   const promote = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/ml/model-registry/${id}/promote`, {
+      const res = await fetch(`/api/proxy/ml/model-registry/${id}/promote`, {
         method: "PATCH",
-        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success("Model promoted to champion. Live predictions will update on the next pipeline run.");
@@ -177,9 +171,8 @@ export default function ModelRegistryPage() {
   const rollback = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/ml/model-registry/${id}/rollback`, {
+      const res = await fetch(`/api/proxy/ml/model-registry/${id}/rollback`, {
         method: "PATCH",
-        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success("Rolled back to previous champion.");
@@ -191,12 +184,9 @@ export default function ModelRegistryPage() {
   const reject = async (id: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/ml/model-registry/${id}/reject`, {
+      const res = await fetch(`/api/proxy/ml/model-registry/${id}/reject`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: rejectNote }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

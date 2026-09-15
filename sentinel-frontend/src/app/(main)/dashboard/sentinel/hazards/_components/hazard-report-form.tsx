@@ -22,8 +22,6 @@ const SITES = [
   { id: "site-007", name: "Kisumu Terminal" },
 ];
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-
 export function HazardReportForm() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -40,13 +38,9 @@ export function HazardReportForm() {
     }
     setLoading(true);
     try {
-      const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-      const res = await fetch(`${API_BASE}/api/hazard-reports`, {
+      const res = await fetch('/api/proxy/hazard-reports', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

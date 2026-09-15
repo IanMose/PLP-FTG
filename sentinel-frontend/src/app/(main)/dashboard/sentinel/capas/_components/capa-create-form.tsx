@@ -11,8 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-
 interface Props {
   sourceAlertId?: string;
   sourceHazardId?: string;
@@ -32,10 +30,7 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
 
   useEffect(() => {
     if (!open) return;
-    const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-    fetch(`${API_BASE}/api/technicians`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    fetch('/api/proxy/technicians')
       .then((r) => r.json())
       .then(setTechnicians)
       .catch(() => {});
@@ -48,13 +43,9 @@ export function CapaCreateForm({ sourceAlertId, sourceHazardId, triggerLabel = "
     }
     setLoading(true);
     try {
-      const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-      const res = await fetch(`${API_BASE}/api/capas`, {
+      const res = await fetch('/api/proxy/capas', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, ownerId: Number(form.ownerId) }),
       });
       if (!res.ok) {

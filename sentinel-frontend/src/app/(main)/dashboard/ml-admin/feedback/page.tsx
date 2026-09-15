@@ -8,9 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-const getToken = () => document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-
 const BAND_STYLES: Record<string, string> = {
   uncertain: "text-red-600 bg-red-50 dark:bg-red-950/20",
   low:       "text-orange-600 bg-orange-50 dark:bg-orange-950/20",
@@ -28,9 +25,7 @@ export default function FeedbackQueuePage() {
   const [ratings, setRatings] = useState<Record<string | number, string>>({});
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/ml/predictions-for-review`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    })
+    fetch('/api/proxy/ml/predictions-for-review')
       .then((r) => r.json())
       .then((data) => {
         setPredictions(Array.isArray(data) ? data : []);
@@ -45,12 +40,9 @@ export default function FeedbackQueuePage() {
   const rate = async (predictionId: number, siteId: string, rating: string) => {
     setRatings((r) => ({ ...r, [predictionId]: rating }));
     try {
-      await fetch(`${API_BASE}/api/ml/feedback`, {
+      await fetch('/api/proxy/ml/feedback', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ predictionId, siteId, rating }),
       });
       toast.success(`Rated as ${rating}`);

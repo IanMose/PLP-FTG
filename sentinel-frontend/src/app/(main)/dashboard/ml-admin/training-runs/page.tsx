@@ -8,18 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BackendError } from "@/components/backend-error";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-const getToken = () => document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-
 export default function TrainingRunsPage() {
   const [runs, setRuns] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [retraining, setRetraining] = useState(false);
 
   const load = () => {
-    fetch(`${API_BASE}/api/ml/training-runs`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    })
+    fetch('/api/proxy/ml/training-runs')
       .then((r) => r.json())
       .then(setRuns)
       .catch((e) => setError(e.message));
@@ -33,12 +28,9 @@ export default function TrainingRunsPage() {
       toast.info("Retrain triggered — this may take a moment.");
       // In production this calls the backend which runs python -m src.retrain
       // For demo: create a placeholder training run record
-      const res = await fetch(`${API_BASE}/api/ml/training-run`, {
+      const res = await fetch('/api/proxy/ml/training-run', {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           version: `logreg_${new Date().toISOString().slice(0,10).replace(/-/g,"")}`,
           algorithm: "logistic_regression",

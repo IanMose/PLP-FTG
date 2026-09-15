@@ -7,17 +7,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CapaStatusBadge } from "../capas/_components/capa-status-badge";
 import { BackendError } from "@/components/backend-error";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-
 export default function MyTasksPage() {
   const [capas, setCapas] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = document.cookie.match(/sentinel-token=([^;]+)/)?.[1];
-    fetch(`${API_BASE}/api/capas`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    fetch('/api/proxy/capas')
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(setCapas)
       .catch((e) => setError(e.message));
