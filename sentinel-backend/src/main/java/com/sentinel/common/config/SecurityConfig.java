@@ -21,6 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.sentinel.common.security.JwtAuthFilter;
+import com.sentinel.common.security.ServiceTokenFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -28,12 +29,14 @@ import com.sentinel.common.security.JwtAuthFilter;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ServiceTokenFilter serviceTokenFilter;
 
     @Value("${sentinel.cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, ServiceTokenFilter serviceTokenFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.serviceTokenFilter = serviceTokenFilter;
     }
 
     @Bean
@@ -46,7 +49,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-ETL-Api-Key"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With", "X-ETL-Api-Key", "X-Service-Token"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
@@ -113,6 +116,7 @@ public class SecurityConfig {
                 // Everything else (POST /api/alerts/{id}/ack, etc.) requires auth
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(serviceTokenFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             // Allow H2 console frames in dev
             .headers(h -> h.frameOptions(f -> f.sameOrigin()));

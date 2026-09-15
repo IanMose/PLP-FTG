@@ -2,6 +2,7 @@ package com.sentinel.capa;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.sentinel.user.AppUserRepository;
@@ -17,6 +18,7 @@ public class CapaController {
     private final AppUserRepository userRepo;
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('HSE_OFFICER', 'HSE_MANAGER', 'AUDITOR', 'ADMIN')")
     public ResponseEntity<CapaDto> create(@RequestBody CreateCapaRequest req) {
         return ResponseEntity.ok(service.createCapa(req));
     }
@@ -42,6 +44,7 @@ public class CapaController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('HSE_OFFICER', 'HSE_MANAGER', 'ADMIN')")
     public ResponseEntity<CapaDto> updateStatus(
             @PathVariable String id,
             @RequestBody UpdateCapaStatusRequest req,

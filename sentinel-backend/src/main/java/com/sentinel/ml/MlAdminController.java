@@ -5,13 +5,19 @@ import com.sentinel.prediction.PredictionRepository;
 import com.sentinel.user.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @RestController
@@ -28,6 +34,12 @@ public class MlAdminController {
     private final RetrainingScheduleService scheduleService;
     private final DriftDetectionService driftService;
     private final ModelComparisonService comparisonService;
+    private final RetrainingScheduleRepository retrainingScheduleRepo;
+
+    @Value("${sentinel.retrain.script-path:sentinel/retrain.py}")
+    private String retrainScriptPath;
+
+    private static final String SCHEDULE_ID = "00000000-0000-0000-0001-000000000001";
 
     @GetMapping("/champion-artifact-path")
     public ResponseEntity<Map<String, String>> getChampionPath() {
@@ -125,6 +137,186 @@ public class MlAdminController {
         return ResponseEntity.ok(Map.of("id", fb.getId(), "status", "saved"));
     }
 
+    // ── V4: New ML API Endpoints ──────────────────────────────────────────────
+
+    /**
+     * GET /api/ml/feedback-export
+     * Export feedback for retrain.py to consume.
+     * Auth: X-Service-Token only (handled at filter level, endpoint is public to ML service)
+     */
+    @GetMapping("/feedback-export")
+    public ResponseEntity<List<Map<String, Object>>> exportFeedback(
+            @RequestParam(defaultValue = "true") boolean excludeUncertain,
+            @RequestParam(defaultValue = "5") int minCount) {
+        List<ModelFeedbackEntity> allFeedback = feedbackRepo.findAllByOrderByCreatedAtDesc();
+        
+        // Filter out uncertain ratings if requested
+        List<ModelFeedbackEntity> filtered = allFeedback;
+        if (excludeUncertain) {
+            filtered = allFeedback.stream()
+                    .filter(f -> !"uncertain".equalsIgnoreCase(f.getRating()))
+                    .collect(Collectors.toList());
+        }
+        
+        // Return empty array (not 404) if fewer than minCount rows
+        if (filtered.size() < minCount) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        
+        List<Map<String, Object>> result = filtered.stream().map(f -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", f.getId());
+            m.put("siteId", f.getSiteId());
+            m.put("predictionId", f.getPredictionId());
+            m.put("source", f.getSource());
+            m.put("rating", f.getRating());
+            m.put("note", f.getNote());
+            m.put("reviewerId", f.getReviewerId());
+            m.put("createdAt", f.getCreatedAt());
+            return m;
+        }).collect(Collectors.toList());
+        
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * POST /api/ml/model-registry
+     * Create a new challenger model with optional artifactBlob (base64 encoded PKL).
+     * Auth: ML_ADMIN role OR valid X-Service-Token header
+     * Returns 409 if a challenger already exists.
+     */
+    @PostMapping("/model-registry")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ML_ADMIN')")
+    public ResponseEntity<Map<String, Object>> createModelRegistry(@RequestBody Map<String, Object> body) {
+        // Check if a challenger already exists
+        Optional<ModelRegistryEntity> existingChallenger = 
+            registryRepo.findFirstByStatusOrderByTrainedAtDesc("challenger");
+        if (existingChallenger.isPresent()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "A challenger model already exists", 
+                                 "existingChallengerId", existingChallenger.get().getId()));
+        }
+        
+        ModelRegistryEntity model = new ModelRegistryEntity();
+        model.setId(UUID.randomUUID().toString());
+        model.setVersion((String) body.getOrDefault("version", "logreg_auto"));
+        model.setAlgorithm((String) body.getOrDefault("algorithm", "logistic_regression"));
+        model.setTrainedAt(LocalDateTime.now());
+        
+        if (body.get("precisionScore") != null)
+            model.setPrecisionScore(new BigDecimal(body.get("precisionScore").toString()));
+        if (body.get("recallScore") != null)
+            model.setRecallScore(new BigDecimal(body.get("recallScore").toString()));
+        if (body.get("f1Score") != null)
+            model.setF1Score(new BigDecimal(body.get("f1Score").toString()));
+        if (body.get("featureImportance") != null)
+            model.setFeatureImportance((String) body.get("featureImportance"));
+        
+        model.setStatus("challenger");
+        model.setArtifactPath((String) body.getOrDefault("artifactPath", "sentinel/models/logreg_v1.pkl"));
+        
+        // V30: Store artifact blob (base64 encoded PKL file)
+        if (body.get("artifactBlob") != null) {
+            model.setArtifactBlob((String) body.get("artifactBlob"));
+        }
+        
+        if (body.get("notes") != null) {
+            model.setNotes((String) body.get("notes"));
+        }
+        
+        registryRepo.save(model);
+        
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", model.getId());
+        response.put("version", model.getVersion());
+        response.put("status", model.getStatus());
+        response.put("trainedAt", model.getTrainedAt());
+        response.put("hasArtifactBlob", model.getArtifactBlob() != null);
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * POST /api/ml/trigger-retrain
+     * Manually trigger a retraining run.
+     * Auth: ML_ADMIN role
+     * Returns 202 if started, 409 if already running.
+     */
+    @PostMapping("/trigger-retrain")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ML_ADMIN')")
+    public ResponseEntity<Map<String, String>> triggerRetrain(Authentication auth) {
+        // Check current status
+        RetrainingScheduleEntity schedule = retrainingScheduleRepo.findById(SCHEDULE_ID)
+                .orElseGet(() -> {
+                    RetrainingScheduleEntity s = new RetrainingScheduleEntity();
+                    s.setId(SCHEDULE_ID);
+                    s.setStatus("disabled");
+                    s.setCadence("weekly");
+                    s.setUpdatedAt(LocalDateTime.now());
+                    return retrainingScheduleRepo.save(s);
+                });
+        
+        if ("running".equals(schedule.getStatus())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "Retraining is already running"));
+        }
+        
+        // Set status to running
+        schedule.setStatus("running");
+        schedule.setUpdatedBy(auth != null ? auth.getName() : "api");
+        schedule.setUpdatedAt(LocalDateTime.now());
+        retrainingScheduleRepo.save(schedule);
+        
+        // Invoke retrain.py as subprocess (async, non-blocking)
+        CompletableFuture.runAsync(() -> runRetrainScript(auth != null ? auth.getName() : "api"));
+        
+        log.info("MlAdminController: retraining triggered by {}", auth != null ? auth.getName() : "api");
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(Map.of("message", "Retraining started", "triggeredBy", auth != null ? auth.getName() : "api"));
+    }
+
+    private void runRetrainScript(String triggeredBy) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("python", retrainScriptPath);
+            pb.environment().put("TRIGGERED_BY", triggeredBy);
+            pb.redirectErrorStream(true);
+            
+            Process process = pb.start();
+            
+            // Log output asynchronously
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.info("retrain.py: {}", line);
+                }
+            }
+            
+            int exitCode = process.waitFor();
+            
+            // Update schedule status based on result
+            RetrainingScheduleEntity schedule = retrainingScheduleRepo.findById(SCHEDULE_ID).orElse(null);
+            if (schedule != null) {
+                if (exitCode == 0) {
+                    schedule.setStatus("awaiting_review");
+                    log.info("MlAdminController: retrain.py completed successfully");
+                } else {
+                    schedule.setStatus("failed");
+                    log.error("MlAdminController: retrain.py failed with exit code {}", exitCode);
+                }
+                schedule.setUpdatedAt(LocalDateTime.now());
+                retrainingScheduleRepo.save(schedule);
+            }
+        } catch (Exception e) {
+            log.warn("MlAdminController: retrain.py invocation failed (non-fatal): {}", e.getMessage());
+            // Update status to failed
+            retrainingScheduleRepo.findById(SCHEDULE_ID).ifPresent(s -> {
+                s.setStatus("failed");
+                s.setUpdatedAt(LocalDateTime.now());
+                retrainingScheduleRepo.save(s);
+            });
+        }
+    }
+
     @PostMapping("/training-run")
     public ResponseEntity<Map<String, String>> saveTrainingRun(@RequestBody Map<String, Object> body) {
         // Create model_registry entry (challenger)
@@ -162,6 +354,7 @@ public class MlAdminController {
     }
 
     @PatchMapping("/model-registry/{id}/promote")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ML_ADMIN')")
     public ResponseEntity<Map<String, String>> promote(
             @PathVariable String id, Authentication auth) {
         ModelRegistryEntity challenger = registryRepo.findById(id)
@@ -186,6 +379,7 @@ public class MlAdminController {
     }
 
     @PatchMapping("/model-registry/{id}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ML_ADMIN')")
     public ResponseEntity<Map<String, String>> reject(
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> body) {
@@ -251,6 +445,7 @@ public class MlAdminController {
      * but accepts 'archived' status too). Requires human confirmation — no auto-rollback.
      */
     @PatchMapping("/model-registry/{id}/rollback")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ML_ADMIN')")
     public ResponseEntity<Map<String, String>> rollback(
             @PathVariable String id, Authentication auth) {
         ModelRegistryEntity target = registryRepo.findById(id)
@@ -289,6 +484,7 @@ public class MlAdminController {
         map.put("approvedAt", m.getApprovedAt());
         map.put("notes", m.getNotes());
         map.put("featureImportance", m.getFeatureImportance());
+        map.put("hasArtifactBlob", m.getArtifactBlob() != null);
         return map;
     }
 
