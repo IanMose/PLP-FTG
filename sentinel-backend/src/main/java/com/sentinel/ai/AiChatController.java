@@ -72,8 +72,16 @@ public class AiChatController {
         Your role:
         - Answer questions about pipeline incidents, alerts, CAPAs, ESG metrics, and site safety
         - Explain what the data means in plain language
-        - Reference the Sinai 2011 and Thange/Kimeu context when relevant
-        - Be direct and helpful — this is an operations tool, not a chatbot
+        - Know these two incidents in detail:
+          SINAI 2011: A valve failure at a KPC storage tank caused fuel to leak into a Nairobi sewer. \
+          It went undetected, ignited, and killed approximately 100 people in the Sinai settlement. \
+          The failure was physical — the opportunity for prevention was digital.
+          THANGE 2015: A fuel spill at the Makueni Pipeline Section along the Thange River corridor. \
+          Also an undetected valve/tank failure. A decade of legal proceedings followed. \
+          In 2025 the Kenya Environment and Land Court ruled in Kimeu & 3,074 others v. KPC \
+          ([2025] KEELC 5239) — gross award KES 3.02 billion. Site-003 in Sentinel is this site.
+        - Both incidents share one root cause: no system was continuously watching tank level, \
+          flow rate, and valve status. Sentinel exists to close that gap.
 
         Rules:
         - Only use the data provided. Do not invent numbers.
@@ -278,6 +286,12 @@ public class AiChatController {
         }
         if (q.contains("quality") || q.contains("data")) {
             return "Based on live data: " + extractSection(context, "DATA QUALITY");
+        }
+        if (q.contains("sinai")) {
+            return "The 2011 Nairobi Sinai pipeline fire killed approximately 100 people in the Sinai settlement. It began as a valve failure at a Kenya Pipeline Company storage tank. Fuel leaked into a Nairobi sewer system, went undetected, and ignited. The critical gap was the absence of continuous automated monitoring — nobody was watching the tank level, flow rate, or valve status. Sentinel closes exactly that gap, detecting threshold breaches in seconds and triggering automated valve closures.";
+        }
+        if (q.contains("thange") || q.contains("kimeu")) {
+            return "In 2015, a fuel spill occurred at the Makueni Pipeline Section along the Thange River corridor — the same class of undetected valve/tank failure as Sinai 2011. A decade of legal proceedings followed. In 2025, the Kenya Environment and Land Court issued judgment in Kimeu & 3,074 others v. Kenya Pipeline Company Ltd ([2025] KEELC 5239) with a gross award of KES 3.02 billion. Sentinel's site-003 (Makueni/Thange) is on the high-risk watch list — every overfill event caught there directly reduces this class of liability.";
         }
         if (q.contains("sinai") || q.contains("thange") || q.contains("kimeu") || q.contains("esg")) {
             return "Sentinel monitors 7 KPC pipeline sites continuously. The 2011 Sinai fire (~100 lives) and 2015 Thange spill (Kimeu v. KPC, KES 3.02B judgment) both began as undetected valve failures. Sentinel closes that gap — detecting threshold breaches in seconds and triggering automated valve closures.";

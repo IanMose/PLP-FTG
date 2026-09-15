@@ -12,8 +12,9 @@ interface Message {
 const SUGGESTIONS = [
   "What happened recently?",
   "Which sites are most at risk?",
+  "Tell me about the Sinai 2011 fire",
+  "Tell me about the Thange judgment",
   "What CAPAs are overdue?",
-  "Explain the Thange judgment",
   "How fast does Sentinel respond?",
 ];
 
