@@ -25,6 +25,7 @@ import {
   ScrollText,
   LayoutDashboard,
   Zap,
+  Leaf,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -113,6 +114,13 @@ export const sidebarItems: NavGroup[] = [
         title: "Executive Dashboard",
         url: "/dashboard/executive",
         icon: LayoutDashboard,
+        badge: "new",
+      },
+      {
+        id: "esg-report",
+        title: "ESG Report",
+        url: "/dashboard/esg",
+        icon: Leaf,
         badge: "new",
       },
       {
