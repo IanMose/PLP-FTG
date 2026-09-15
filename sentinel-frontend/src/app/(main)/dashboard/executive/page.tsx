@@ -1,12 +1,64 @@
 "use client";
 
 import { useExecutiveSummaryV5 } from "@/lib/control-plane/api";
+import { useQuery } from "@tanstack/react-query";
 import { KpiValue } from "@/components/control-plane/KpiValue";
 import { BackendError } from "@/components/backend-error";
 import { ThangeSummary } from "./_components/thange-summary";
 import { DemoTriggerButton } from "./_components/demo-trigger-button";
 import { EventFeed } from "./_components/event-feed";
 import { Activity, Droplets, ShieldCheck, Clock, AlertTriangle, TrendingUp } from "lucide-react";
+
+// ── Fetch recent events from backend ──────────────────────────────────────────
+
+interface EventSummary {
+  eventId: string;
+  eventType: string;
+  severity: string;
+  siteId: string;
+  tankId: string;
+  tankLevelPct: number;
+  createdAt: string;
+  actuationTriggered: boolean;
+  notificationSent: boolean;
+}
+
+function useRecentEvents() {
+  return useQuery({
+    queryKey: ["executive-recent-events"],
+    queryFn: async (): Promise<EventSummary[]> => {
+      const res = await fetch("/api/proxy/executive/recent-events");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+// ── Fetch Thange summary from backend ─────────────────────────────────────────
+
+interface ThangeSummaryData {
+  totalDetections: number;
+  successfulInterventions: number;
+  litresSaved: number;
+  kesSaved: number;
+  description: string;
+  periodHours: number;
+}
+
+function useThangeSummary() {
+  return useQuery({
+    queryKey: ["thange-summary"],
+    queryFn: async (): Promise<ThangeSummaryData | null> => {
+      const res = await fetch("/api/proxy/executive/thange-summary");
+      if (!res.ok) return null;
+      return res.json();
+    },
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +103,8 @@ function KpiCard({ label, value, suffix, prefix, decimals, icon, description, hi
 
 export default function ExecutiveDashboardPage() {
   const { data: summary, isLoading, isError } = useExecutiveSummaryV5();
+  const { data: recentEvents = [] } = useRecentEvents();
+  const { data: thangeSummary } = useThangeSummary();
 
   if (isError) {
     return (
@@ -164,10 +218,16 @@ export default function ExecutiveDashboardPage() {
       {/* Event feed + Thange reference */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <EventFeed />
+          <EventFeed events={recentEvents} />
         </div>
         <div>
-          <ThangeSummary />
+          <ThangeSummary 
+            detections={thangeSummary?.totalDetections ?? 0}
+            interventions={thangeSummary?.successfulInterventions ?? 0}
+            successRate={thangeSummary?.totalDetections 
+              ? (thangeSummary.successfulInterventions / thangeSummary.totalDetections) * 100 
+              : 0}
+          />
         </div>
       </div>
     </div>
