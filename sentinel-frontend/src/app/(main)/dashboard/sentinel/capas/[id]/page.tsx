@@ -12,10 +12,6 @@ import { Label } from "@/components/ui/label";
 import { CapaStatusBadge, CapaStatusStepper } from "../_components/capa-status-badge";
 import { BackendError } from "@/components/backend-error";
 
-const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
-
-function getToken() { return document.cookie.match(/sentinel-token=([^;]+)/)?.[1]; }
-
 export default function CapaDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [capa, setCapa] = useState<any>(null);
@@ -24,9 +20,8 @@ export default function CapaDetailPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/capas/${params.id}`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    })
+    const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "";
+    fetch(`${API_BASE}/api/capas/${params.id}`, { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(setCapa)
       .catch((e) => setError(e.message));
@@ -35,12 +30,9 @@ export default function CapaDetailPage({ params }: { params: { id: string } }) {
   const transition = async (status: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/capas/${params.id}/status`, {
+      const res = await fetch(`/api/proxy/capas/${params.id}/status`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, evidenceUrl: evidence }),
       });
       if (!res.ok) {

@@ -63,7 +63,12 @@
       "correctness": {
         "noUndeclaredVariables": "error",
         "noNestedComponentDefinitions": "error",
-        "noUndeclaredDependencies": "error"
+        "noUndeclaredDependencies": {
+          "level": "error",
+          "options": {
+            "devDependencies": ["src/test/**", "vitest.config.ts", "playwright.config.ts"]
+          }
+        }
       },
       "nursery": {
         "useSortedClasses": "on",

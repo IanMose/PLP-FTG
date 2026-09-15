@@ -282,3 +282,50 @@ html {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ============================================================
+   V5 Control Plane tokens — additive, do not remove existing
+   ============================================================ */
+:root {
+  /* Risk bands — ordered severity scale */
+  --risk-normal: #10b981;    /* emerald-500 */
+  --risk-watch: #0ea5e9;     /* sky-500 */
+  --risk-warning: #f59e0b;   /* amber-500 */
+  --risk-critical: #ea580c;  /* orange-600 */
+  --risk-emergency: #dc2626; /* red-600 */
+
+  /* Control modes */
+  --mode-advisory: #6b7280;  /* gray-500 */
+  --mode-controlled: #f59e0b;/* amber-500 */
+  --mode-emergency: #dc2626; /* red-600 */
+
+  /* Verification states — SAFETY CRITICAL:
+     CONFIRMED_CLOSED must never be visually confusable with UNVERIFIED or TIMEOUT. */
+  --verify-pending: #f59e0b;  /* amber-500 — pulsing */
+  --verify-success: #10b981;  /* emerald-500 — static */
+  --verify-failed: #dc2626;   /* red-600 — static */
+  --verify-unknown: #c2410c;  /* orange-700 — static, distinct from failed */
+
+  /* Console surface — used exclusively inside the Control Plane route group */
+  --console-bg: #0b1215;
+  --console-panel: #121b1f;
+  --console-border: #1f2b30;
+  --console-text: #d8e2e6;
+  --console-text-dim: #7c9099;
+}
+
+/* Pulsing animation for UNVERIFIED state */
+@keyframes verify-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.verify-pending {
+  animation: verify-pulse 1.4s ease-in-out infinite;
+}
+
+/* Tabular numbers — digits don't jitter width as values change */
+.tabular-readout {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

@@ -9,6 +9,7 @@ import { fontVars } from "@/lib/fonts/registry";
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ThemeBootScript } from "@/scripts/theme-boot";
 import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";
+import { QueryProvider } from "@/providers/query-provider";
 
 import "./globals.css";
 
@@ -38,10 +39,12 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       </head>
       <body className={`${fontVars} min-h-screen antialiased`}>
         <TooltipProvider>
-          <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
-            {children}
-            <Toaster />
-          </PreferencesStoreProvider>
+          <QueryProvider>
+            <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
+              {children}
+              <Toaster />
+            </PreferencesStoreProvider>
+          </QueryProvider>
         </TooltipProvider>
       </body>
     </html>
