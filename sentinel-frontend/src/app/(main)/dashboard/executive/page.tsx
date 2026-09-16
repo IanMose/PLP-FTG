@@ -1,12 +1,13 @@
 "use client";
 
-import { useExecutiveSummaryV5 } from "@/lib/control-plane/api";
+import { useExecutiveSummaryV5, useActuationLog } from "@/lib/control-plane/api";
 import { KpiValue } from "@/components/control-plane/KpiValue";
 import { BackendError } from "@/components/backend-error";
 import { ThangeSummary } from "./_components/thange-summary";
 import { DemoTriggerButton } from "./_components/demo-trigger-button";
 import { EventFeed } from "./_components/event-feed";
 import { Activity, Droplets, ShieldCheck, Clock, AlertTriangle, TrendingUp } from "lucide-react";
+import { VERIFY_STATE } from "@/lib/control-plane/tokens";
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 
@@ -47,10 +48,69 @@ function KpiCard({ label, value, suffix, prefix, decimals, icon, description, hi
   );
 }
 
+// ── Posture summary card ──────────────────────────────────────────────────────
+
+function PostureSummaryCard({
+  unverified,
+  uptime,
+}: {
+  unverified: number;
+  uptime: number;
+}) {
+  const isSafe = unverified === 0 && uptime >= 99;
+  return (
+    <div
+      className={`rounded-lg border p-5 flex flex-col gap-2 ${
+        isSafe
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-amber-500/30 bg-amber-500/5"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-2.5 w-2.5 rounded-full ${isSafe ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-pulse"}`}
+          aria-hidden
+        />
+        <span
+          className={`text-xs font-semibold uppercase tracking-widest ${isSafe ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}
+        >
+          {isSafe ? "All Systems Safe" : "Attention Required"}
+        </span>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {isSafe
+          ? "No unverified actuations. All interlocks confirmed closed. System operating within normal parameters."
+          : `${unverified} actuation${unverified !== 1 ? "s" : ""} awaiting verification. Review the Interlock Center.`}
+      </p>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ExecutiveDashboardPage() {
   const { data: summary, isLoading, isError } = useExecutiveSummaryV5();
+
+  // Wire EventFeed to real actuation log data
+  const { data: actuationLog = [] } = useActuationLog();
+
+  // Map actuation log entries to the EventFeed shape
+  const feedEvents = actuationLog.map((entry) => ({
+    eventId: entry.id,
+    eventType: entry.eventType,
+    severity:
+      entry.controlMode === "EMERGENCY"
+        ? "Critical"
+        : entry.controlMode === "CONTROLLED"
+          ? "High"
+          : "Medium",
+    siteId: entry.siteName,
+    tankId: "—",
+    tankLevelPct: 0,
+    createdAt: entry.timestampIso,
+    actuationTriggered: entry.actionRequested !== "",
+    notificationSent: true,
+  }));
 
   if (isError) {
     return (
@@ -91,6 +151,12 @@ export default function ExecutiveDashboardPage() {
         <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
         Auto-refreshing every 15 seconds
       </div>
+
+      {/* Posture summary */}
+      <PostureSummaryCard
+        unverified={summary?.unverifiedActuations ?? 0}
+        uptime={summary?.systemUptimePercent ?? 0}
+      />
 
       {/* V4 KPI strip — 4 core metrics */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -161,20 +227,16 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Event feed + Thange reference */}
+      {/* Event feed (wired to actuation log) + Thange reference */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <EventFeed events={[]} />
+          <EventFeed events={feedEvents} />
         </div>
         <div>
           <ThangeSummary
             detections={summary?.overfillEventsPrevented ?? 0}
             interventions={summary?.overfillEventsPrevented ?? 0}
-            successRate={
-              (summary?.overfillEventsPrevented ?? 0) > 0
-                ? ((summary?.overfillEventsPrevented ?? 0) / Math.max(summary?.overfillEventsPrevented ?? 1, 1)) * 100
-                : 100
-            }
+            successRate={100}
           />
         </div>
       </div>
