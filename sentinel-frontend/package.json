@@ -40,6 +40,7 @@
     "embla-carousel-react": "^8.6.0",
     "geist": "^1.7.2",
     "input-otp": "^1.4.2",
+    "jspdf": "4.2.1",
     "leaflet": "1.9.4",
     "leaflet.heat": "0.2.0",
     "lucide-react": "^1.25.0",

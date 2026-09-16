@@ -17,6 +17,7 @@ import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
 import { DashboardAutoRefresh } from "./_components/dashboard-auto-refresh";
 import { SentinelAlertSound } from "./_components/sentinel-alert-sound";
 import { AlertSoundToggle } from "./_components/alert-sound-toggle";
+import { AiChatBot } from "./_components/ai-chat-bot";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
@@ -76,6 +77,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
           <DashboardAutoRefresh />
           <SentinelAlertSound />
           {children}
+          <AiChatBot />
         </div>
       </SidebarInset>
     </SidebarProvider>

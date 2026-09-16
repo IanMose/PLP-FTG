@@ -17,18 +17,25 @@ const TEST_MODE = process.env.NEXT_PUBLIC_TEST_MODE === "true";
 
 const MOCK_ALERTS: Alert[] = [];
 const MOCK_QUALITY_SUMMARY: DataQualitySummary = {
-  totalRecords: 0,
-  validRecords: 0,
-  invalidRecords: 0,
-  validationRate: 100,
-  lastUpdated: new Date().toISOString(),
+  trusted: 0,
+  corrected: 0,
+  review: 0,
+  rejected: 0,
+  total: 0,
+  passRate: 1,
+  gateStatus: "passed",
+  threshold: 0.9,
+  lastBatchId: "",
+  lastBatchDate: new Date().toISOString(),
 };
 const MOCK_RISK_SUMMARY: SiteRiskSummary[] = [];
 const MOCK_TELEMETRY_SUMMARY: TelemetrySummary = {
-  totalSites: 0,
-  activeSites: 0,
   totalReadings: 0,
-  lastUpdated: new Date().toISOString(),
+  pressureSpikeCount: 0,
+  sensorDropoutCount: 0,
+  avgPressure: 0,
+  avgFlowRate: 0,
+  avgTemperature: 0,
 };
 const MOCK_BATCHES: IngestBatch[] = [];
 
