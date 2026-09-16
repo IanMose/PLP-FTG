@@ -67,7 +67,7 @@ sentinel:
   # falls back to the templated narrative silently — no errors, no crashes.
   # Get a free key at https://console.groq.com
   llm:
-    groq-api-key: ${GROQ_KEY:}
+    groq-api-key: ${GROQ_API_KEY:}
     model: openai/gpt-oss-20b
     timeout-ms: 3000 # 3 second hard timeout — never block alert creation
     enabled: ${LLM_ENABLED:true}
