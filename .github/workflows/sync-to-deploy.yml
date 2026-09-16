@@ -17,7 +17,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Push to deploy repo
+      - name: Verify token exists
         run: |
-          git remote add deploy https://x-access-token:${{ secrets.DEPLOY_TOKEN }}@github.com/kariukialex999/sentinel.git
+          if [ -z "${{ secrets.DEPLOY_TOKEN }}" ]; then
+            echo "ERROR: DEPLOY_TOKEN secret is not set!"
+            exit 1
+          fi
+          echo "Token is set (length: ${#DEPLOY_TOKEN} chars)"
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+
+      - name: Push to deploy repo
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          git remote add deploy "https://x-access-token:${DEPLOY_TOKEN}@github.com/kariukialex999/sentinel.git"
           git push deploy main --force

@@ -63,3 +63,4 @@ sentinel:
   # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
   kafka:
     enabled: ${KAFKA_ENABLED:false}
+
