@@ -1,9 +1,29 @@
 {
-  "current": "20260913_175840_33b1b5c",
+  "current": "20260916_101234_fc45c25",
   "versions": {
     "20260913_175840_33b1b5c": {
       "created_at": "2026-09-13T17:58:40.769282",
       "pkl_path": "20260913_175840_33b1b5c.pkl",
+      "auc_roc": 0.6497,
+      "precision": 0.6322,
+      "recall": 0.4701,
+      "f1": 0.5392,
+      "n_train": 516,
+      "n_test": 564,
+      "train_cutoff": "2026-06-12",
+      "features": [
+        "days_since_last_audit",
+        "rejection_rate_7d",
+        "rejection_rate_30d",
+        "incident_count_30d",
+        "incident_severity_score_30d",
+        "pressure_anomaly_count_14d",
+        "audit_finding_open_count"
+      ]
+    },
+    "20260916_101234_fc45c25": {
+      "created_at": "2026-09-16T10:12:34.089140",
+      "pkl_path": "20260916_101234_fc45c25.pkl",
       "auc_roc": 0.6497,
       "precision": 0.6322,
       "recall": 0.4701,

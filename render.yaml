@@ -34,20 +34,15 @@ services:
         value: render
 
       # ── Database — wired from the sibling DB service above ───────────────
+      # JDBC URL without credentials (credentials passed separately)
       - key: DATABASE_URL
-        fromDatabase:
-          name: sentinel-db
-          property: jdbcConnectionString   # jdbc:postgresql://...
+        value: jdbc:postgresql://dpg-dakkgh2d0e5s73e9pae0-a/sentinel_k6c0
 
       - key: DB_USERNAME
-        fromDatabase:
-          name: sentinel-db
-          property: user
+        value: sentinel
 
       - key: DB_PASSWORD
-        fromDatabase:
-          name: sentinel-db
-          property: password
+        value: fLsl5bPwg7bzNjWyoMOJnCAGour7QKG7
 
       # ── Security ─────────────────────────────────────────────────────────
       # IMPORTANT: replace this placeholder with a real secret before deploying.

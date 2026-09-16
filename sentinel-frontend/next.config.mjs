@@ -13,6 +13,10 @@ const nextConfig = {
     ignoreBuildErrors: true,
     tsconfigPath: "./tsconfig.json",
   },
+  // Image optimization — disabled for Vercel compatibility with large images
+  images: {
+    unoptimized: true,
+  },
   async redirects() {
     return [
       {
