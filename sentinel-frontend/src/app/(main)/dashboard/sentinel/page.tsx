@@ -1,9 +1,11 @@
 import { BackendError } from "@/components/backend-error";
 import { fetchAlerts, fetchBatches, fetchQualitySummary, fetchRiskSummary } from "@/lib/sentinel/api";
+import { mockExecutiveSummary } from "@/lib/control-plane/mocks";
 
 import { AlertTimeline } from "./_components/alert-timeline";
 import { AlertTrendChart } from "./_components/alert-trend-chart";
 import { ConfidenceGauge } from "./_components/confidence-gauge";
+import { ControlPlaneHeroBanner } from "./_components/control-plane-hero-banner";
 import { DataQualityPanel } from "./_components/data-quality-panel";
 import { RiskHeatmap } from "./_components/risk-heatmap";
 import { SentinelKpiStrip } from "./_components/sentinel-kpi-strip";
@@ -21,22 +23,44 @@ async function fetchSpi() {
   }
 }
 
+/** Fetch live executive summary — falls back to mock if backend unavailable */
+async function fetchExecutiveSummary() {
+  try {
+    const res = await fetch(`${API_BASE}/api/proxy/executive/summary`, {
+      cache: "no-store",
+      next: { revalidate: 30 },
+    });
+    if (!res.ok) return mockExecutiveSummary;
+    return res.json();
+  } catch {
+    return mockExecutiveSummary;
+  }
+}
+
 export default async function Page() {
   try {
-    const [sites, alerts, quality, batches, spi] = await Promise.all([
+    const [sites, alerts, quality, batches, spi, executive] = await Promise.all([
       fetchRiskSummary(),
       fetchAlerts(),
       fetchQualitySummary(),
       fetchBatches(),
       fetchSpi(),
+      fetchExecutiveSummary(),
     ]);
 
     return (
       <div className="flex flex-col gap-4">
+        {/* ── Hero banner: Predict → Interlock → Prevent → Learn ─────────── */}
+        <ControlPlaneHeroBanner
+          overfillEventsPrevented={executive?.overfillEventsPrevented}
+          avgResponseTimeSec={executive?.avgResponseTimeSec}
+        />
+
         <div className="space-y-1">
           <h1 className="text-3xl tracking-tight">Sentinel</h1>
           <p className="text-muted-foreground text-sm">
-            Data quality monitoring, risk scoring, and alert management across all sites.
+            Real-time spill &amp; overfill prevention — risk scoring, alert management,
+            and interlock control across all KPC pipeline sites.
           </p>
         </div>
 
