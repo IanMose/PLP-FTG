@@ -67,15 +67,18 @@ public class HseReportService {
     @Value("${sentinel.llm.groq-api-key:}")
     private String groqApiKey;
 
-    @Value("${sentinel.llm.model:llama-3.1-8b-instant}")
+    @Value("${sentinel.llm.model:openai/gpt-oss-20b}")
     private String groqModel;
 
     @Value("${sentinel.llm.enabled:true}")
     private boolean llmEnabled;
 
     private static final String GROQ_URL    = "https://api.groq.com/openai/v1/chat/completions";
-    private static final int    TIMEOUT_MS  = 8000;  // HSE reports need more tokens
-    private static final int    MAX_TOKENS  = 2000;
+    private static final int    TIMEOUT_MS  = 20000; // 70b model needs more time
+    private static final int    MAX_TOKENS  = 4096;  // raised from 2000 — full 15-section report needs space
+
+    // Use the 70b model for full HSE reports — significantly better structured JSON and legal language
+    private static final String REPORT_MODEL = "openai/gpt-oss-120b";
 
     private static final Set<String> HIGH_RISK_SITES = Set.of("site-003", "site-006");
 
@@ -159,7 +162,12 @@ public class HseReportService {
             "environmental": ["relevant ESG-E metric or finding"],
             "social": ["relevant ESG-S metric or finding"],
             "governance": ["relevant ESG-G metric or finding"]
-          }
+          },
+          "timeline": [
+            { "time": "T+0s", "event": "description of what happened at this step", "type": "detect|response|action|status" },
+            { "time": "T+Xs", "event": "automated response step", "type": "response" },
+            { "time": "Pending", "event": "next required action", "type": "action" }
+          ]
         }
 
         Return ONLY valid JSON. No markdown fences, no preamble, no explanation outside the JSON.
@@ -218,6 +226,57 @@ public class HseReportService {
         HseReportEntity saved = hseReportRepository.save(report);
         log.info("HseReportService: saved {} report {} for event {}",
             aiGenerated ? "AI-generated" : "template", saved.getReportId(), eventId);
+        return saved;
+    }
+
+    /**
+     * Generate an HSE report directly from alert data — used when no event record exists.
+     * Builds a context from the alert's narrative, site, severity, and rule, then calls
+     * the same LLM/template pipeline as generateReport.
+     */
+    @Transactional
+    public HseReportEntity generateFromAlert(com.sentinel.alert.AlertEntity alert) {
+        log.info("HseReportService: generating HSE report from alert alertId={}, site={}, severity={}",
+            alert.getId(),
+            alert.getSiteId(), alert.getSeverity());
+
+        // Check if a report already exists for this alert
+        String alertId = alert.getId();
+        Optional<HseReportEntity> existing =
+            hseReportRepository.findFirstBySourceEventIdOrderByGeneratedAtDesc("alert:" + alertId);
+        if (existing.isPresent() && HseReportEntity.STATUS_DRAFT.equals(existing.get().getStatus())) {
+            log.info("HseReportService: returning existing DRAFT for alertId={}", alertId);
+            return existing.get();
+        }
+
+        String context = assembleContextFromAlert(alert);
+
+        String reportJson;
+        boolean aiGenerated;
+        try {
+            String llmJson = callGroq(context);
+            reportJson  = llmJson != null ? llmJson : buildTemplateReportFromAlert(alert);
+            aiGenerated = llmJson != null;
+        } catch (Exception ex) {
+            log.warn("HseReportService: LLM failed for alert, using template: {}", ex.getMessage());
+            reportJson  = buildTemplateReportFromAlert(alert);
+            aiGenerated = false;
+        }
+
+        String headline = extractHeadlineFromJson(reportJson, alert);
+
+        HseReportEntity report = HseReportEntity.create(
+            "alert:" + alertId,
+            alert.getSiteId(),
+            alert.getSeverity(),
+            headline,
+            reportJson,
+            aiGenerated
+        );
+
+        HseReportEntity saved = hseReportRepository.save(report);
+        log.info("HseReportService: saved {} alert-based report {} for alertId={}",
+            aiGenerated ? "AI-generated" : "template", saved.getReportId(), alertId);
         return saved;
     }
 
@@ -433,7 +492,7 @@ public class HseReportService {
         RestTemplate restTemplate = new RestTemplate(factory);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", groqModel);
+        body.put("model", REPORT_MODEL);  // 70b for full HSE reports
         body.put("messages", List.of(
             Map.of("role", "system", "content", HSE_SYSTEM_PROMPT),
             Map.of("role", "user",   "content", context)
@@ -682,6 +741,145 @@ public class HseReportService {
             log.debug("HseReportService: could not extract headline from JSON");
         }
         return event.getSeverity() + " overfill condition — " + displayName(event.getSiteId());
+    }
+
+    private String extractHeadlineFromJson(String reportJson, com.sentinel.alert.AlertEntity alert) {
+        try {
+            var node = objectMapper.readTree(reportJson);
+            var headline = node.path("executiveSummary").path("headline").asText(null);
+            if (headline != null && !headline.isBlank()) return headline;
+        } catch (Exception ex) {
+            log.debug("HseReportService: could not extract headline from alert JSON");
+        }
+        return alert.getSeverity() + " alert — " + (alert.getTitle() != null ? alert.getTitle() : displayName(alert.getSiteId()));
+    }
+
+    private String assembleContextFromAlert(com.sentinel.alert.AlertEntity alert) {
+        String siteId   = alert.getSiteId();
+        String siteName = displayName(siteId);
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("=== INCIDENT FACTS (from alert) ===\n");
+        sb.append("Alert ID: ").append(alert.getId()).append("\n");
+        sb.append("Site: ").append(siteName).append("\n");
+        sb.append("Severity: ").append(alert.getSeverity()).append("\n");
+        sb.append("Alert Rule: ").append(alert.getRule() != null ? alert.getRule() : "Unknown").append("\n");
+        sb.append("Alert Title: ").append(alert.getTitle() != null ? alert.getTitle() : "Unknown").append("\n");
+        sb.append("Detection Time: ").append(
+            alert.getCreatedAt() != null
+                ? alert.getCreatedAt().format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss"))
+                : "Unknown").append(" UTC\n");
+        if (alert.getNarrative() != null && !alert.getNarrative().isBlank()) {
+            sb.append("AI Narrative: ").append(alert.getNarrative()).append("\n");
+        }
+        if (alert.getDescription() != null && !alert.getDescription().isBlank()) {
+            sb.append("Description: ").append(alert.getDescription()).append("\n");
+        }
+
+        sb.append("\n=== NOTE ===\n");
+        sb.append("This report is generated from an alert record (no associated event record found).\n");
+        sb.append("Some telemetry values (tank level, response time) are not available.\n");
+
+        // CAPA status
+        sb.append("\n=== CAPA STATUS ===\n");
+        try {
+            Long overdue = capaRepository.countOverdue(java.time.LocalDate.now());
+            long created = capaRepository.countCreatedSince(java.time.LocalDateTime.now().minusDays(30));
+            sb.append("CAPAs overdue: ").append(overdue != null ? overdue : 0).append("\n");
+            sb.append("CAPAs created (30d): ").append(created).append("\n");
+        } catch (Exception ex) { sb.append("CAPA data: unavailable\n"); }
+
+        // High-risk context
+        if (HIGH_RISK_SITES.contains(siteId)) {
+            sb.append("\n=== HIGH-RISK SITE CONTEXT ===\n");
+            if ("site-003".equals(siteId)) {
+                sb.append("THANGE CORRIDOR: Kimeu & 3,074 others v. KPC ([2025] KEELC 5239), KES 3.02B.\n");
+            }
+            sb.append("SINAI REFERENCE: 2011 Nairobi Sinai fire (~100 lives) — undetected valve failure.\n");
+        }
+
+        sb.append("\n=== REPORT CONTEXT ===\n");
+        sb.append("Generated: ").append(java.time.LocalDateTime.now().format(
+            java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm"))).append(" UTC\n");
+        sb.append("System: Sentinel AI HSE Agent — DRAFT for HSE professional review.\n");
+
+        return sb.toString();
+    }
+
+    private String buildTemplateReportFromAlert(com.sentinel.alert.AlertEntity alert) {
+        String site     = displayName(alert.getSiteId());
+        String severity = alert.getSeverity() != null ? alert.getSeverity() : "High";
+        String title    = alert.getTitle() != null ? alert.getTitle() : "Alert at " + site;
+        boolean highRisk = HIGH_RISK_SITES.contains(alert.getSiteId());
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        Map<String, Object> exec = new LinkedHashMap<>();
+        exec.put("headline", severity + " alert: " + title);
+        exec.put("whatHappened",
+            "A " + severity + "-severity alert was triggered at " + site + ". " +
+            "Rule: " + (alert.getRule() != null ? alert.getRule() : "threshold breach") + ". " +
+            (alert.getNarrative() != null && !alert.getNarrative().isBlank()
+                ? "Sentinel AI narrative: " + alert.getNarrative().substring(0, Math.min(300, alert.getNarrative().length()))
+                : "HSE investigation required."));
+        exec.put("severity", severity.toUpperCase());
+        exec.put("immediateRisk", "Requires HSE investigation and field verification.");
+        exec.put("environmentalImpactOccurred", false);
+        exec.put("sentinelResponse", "Alert generated and HSE notification issued.");
+        exec.put("currentStatus", "OPEN — pending investigation.");
+        exec.put("keyActions", List.of(
+            "Review alert details and dispatch field assessment team",
+            "Verify site conditions physically",
+            "Initiate CAPA if corrective action required",
+            highRisk ? "PRIORITY: This is a high-risk watch site — escalate to HSE Manager immediately" : "Assign to responsible HSE officer"));
+        report.put("executiveSummary", exec);
+
+        Map<String, Object> narrative = new LinkedHashMap<>();
+        narrative.put("whatSystemDetected", "Sentinel detected: " + title);
+        narrative.put("whyConditionWasAbnormal", "Alert rule triggered: " + (alert.getRule() != null ? alert.getRule() : "threshold exceeded"));
+        narrative.put("whatRiskItCreated", severity + "-severity risk at " + site + ". Physical verification required.");
+        narrative.put("whatSentinelDid", "Recorded alert and generated HSE notification for review.");
+        narrative.put("whatHappenedAfterIntervention", "Pending field verification and HSE investigation.");
+        report.put("narrative", narrative);
+
+        Map<String, Object> risk = new LinkedHashMap<>();
+        risk.put("overallRisk", severity.toUpperCase());
+        risk.put("healthSafety", "Worker safety risk at " + site + " pending field verification.");
+        risk.put("environmental", "No confirmed environmental release. Requires field verification." +
+            (highRisk ? " Thange corridor proximity elevates environmental risk." : ""));
+        risk.put("community", "No confirmed community impact. " + (highRisk ? "High-risk site — Thange precedent applies." : "Field verification required."));
+        risk.put("legalAndCompliance", highRisk ? "Site-003 carries Kimeu v. KPC precedent (KES 3.02B). Any confirmed release at this site requires immediate legal team notification." : "Regulatory obligations apply if confirmed release.");
+        report.put("riskAssessment", risk);
+
+        report.put("rootCauseAnalysis", Map.of(
+            "disclaimer", "AI-generated hypothesis only. Requires HSE investigation.",
+            "confirmedFacts", List.of("Alert triggered at " + site, "Severity: " + severity, "Rule: " + (alert.getRule() != null ? alert.getRule() : "unknown")),
+            "aiHypotheses", List.of("Threshold breach due to operational or equipment anomaly", "May indicate recurring issue at this site"),
+            "requiresInvestigation", List.of("Physical site inspection", "Equipment status check", "Operator activity log review")));
+
+        report.put("capaRecommendations", List.of(
+            Map.of("action", "Conduct field inspection at " + site, "priority", severity.toUpperCase(), "responsibleRole", "Site Engineer / HSE Officer", "suggestedDeadlineDays", 1, "verificationMethod", "Signed inspection record"),
+            Map.of("action", "Review and close all open audit findings", "priority", "HIGH", "responsibleRole", "HSE Manager", "suggestedDeadlineDays", 14, "verificationMethod", "Audit closure evidence")));
+
+        report.put("environmentalImpactAssessment", "No confirmed release. Field verification required.");
+        report.put("managementInsights", List.of(
+            "Alert at " + site + " requires immediate investigation.",
+            highRisk ? "This is a high-risk watch site — Kimeu v. KPC precedent (KES 3.02B) applies to any confirmed incident here." : "Ensure CAPA closure rates remain current."));
+        report.put("earlyWarningSignals", List.of("Repeated alerts at same site signal systemic risk", "Open CAPAs combined with new alerts indicate governance gap"));
+        report.put("esgConnection", Map.of(
+            "environmental", List.of("Incident monitored — no confirmed release"),
+            "social", List.of("Worker safety risk under investigation"),
+            "governance", List.of("Alert documented with full audit trail", "CAPA tracking active")));
+        report.put("reportingConfidence", Map.of(
+            "highConfidence", "Alert record — directly from Sentinel",
+            "mediumConfidence", "Risk assessment derived from alert severity and site classification",
+            "requiresVerification", "Root cause, environmental impact, community impact, physical site conditions"));
+
+        try {
+            return objectMapper.writeValueAsString(report);
+        } catch (Exception ex) {
+            log.error("HseReportService: failed to serialize alert template report", ex);
+            return "{}";
+        }
     }
 
     private String displayName(String siteId) {
