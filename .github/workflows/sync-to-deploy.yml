@@ -1,0 +1,23 @@
+# Sync changes from IanMose/PLP-FTG to kariukialex999/sentinel
+# Triggers on every push to main branch
+
+name: Sync to Deploy Repo
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to deploy repo
+        run: |
+          git remote add deploy https://x-access-token:${{ secrets.DEPLOY_TOKEN }}@github.com/kariukialex999/sentinel.git
+          git push deploy main --force
