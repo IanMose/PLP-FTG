@@ -35,12 +35,11 @@ export function TankLevelGauge({ level, riskBand }: TankLevelGaugeProps) {
             return (
               <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
                 <tspan
-                  className="tabular-readout fill-[var(--console-text)] text-xl font-semibold"
+                  className="tabular-readout text-xl font-semibold fill-foreground"
                   x={cx}
                   dy="-0.1em"
                   fontSize={18}
                   fontWeight={600}
-                  fill="var(--console-text)"
                 >
                   {level.toFixed(0)}%
                 </tspan>

@@ -27,7 +27,7 @@ export function ControlModeConfigPanel({ siteId }: ControlModeConfigPanelProps) 
 
   if (isLoading) {
     return (
-      <div className="text-sm text-[var(--console-text-dim)] animate-pulse">
+      <div className="text-sm text-muted-foreground animate-pulse">
         Loading rules…
       </div>
     );
@@ -35,7 +35,7 @@ export function ControlModeConfigPanel({ siteId }: ControlModeConfigPanelProps) 
 
   if (!rules || rules.length === 0) {
     return (
-      <div className="text-sm text-[var(--console-text-dim)]">
+      <div className="text-sm text-muted-foreground">
         No interlock rules configured for this site.
       </div>
     );
@@ -59,14 +59,14 @@ export function ControlModeConfigPanel({ siteId }: ControlModeConfigPanelProps) 
         {rules.map((rule) => (
           <div
             key={rule.id}
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] p-3"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border border-border bg-card p-3"
           >
             <div>
-              <div className="text-sm font-medium text-[var(--console-text)]">
+              <div className="text-sm font-medium text-foreground">
                 {rule.alertRuleType.replace(/_/g, " ")}
               </div>
               {rule.updatedBy && (
-                <div className="text-xs text-[var(--console-text-dim)] mt-0.5">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   Last updated by {rule.updatedBy}
                 </div>
               )}

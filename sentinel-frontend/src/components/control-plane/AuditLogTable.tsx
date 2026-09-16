@@ -32,12 +32,12 @@ export function AuditLogTable() {
           placeholder="Filter by site…"
           value={siteFilter}
           onChange={(e) => setSiteFilter(e.target.value)}
-          className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] px-3 py-1.5 text-sm text-[var(--console-text)] placeholder:text-[var(--console-text-dim)] focus:outline-none focus:ring-1 focus:ring-white/20"
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <select
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value)}
-          className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] px-3 py-1.5 text-sm text-[var(--console-text)] focus:outline-none focus:ring-1 focus:ring-white/20"
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
           {VERIFIED_STATE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -49,22 +49,22 @@ export function AuditLogTable() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-sm text-[var(--console-text-dim)] animate-pulse">
+        <div className="text-sm text-muted-foreground animate-pulse">
           Loading actuation log…
         </div>
       ) : entries.length === 0 ? (
-        <div className="rounded-md border border-[var(--console-border)] p-8 text-center text-sm text-[var(--console-text-dim)]">
+        <div className="rounded-md border border-border p-8 text-center text-sm text-muted-foreground">
           No actuation records match the current filter.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-[var(--console-border)]">
+        <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--console-border)] bg-[var(--console-panel)]">
+              <tr className="border-b border-border bg-muted/50">
                 {["Time", "Site", "Event", "Mode", "Action", "Verified"].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[var(--console-text-dim)]"
+                    className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
                   >
                     {h}
                   </th>
@@ -75,11 +75,11 @@ export function AuditLogTable() {
               {entries.map((entry, i) => (
                 <tr
                   key={entry.id}
-                  className={`border-b border-[var(--console-border)] ${
-                    i % 2 === 0 ? "bg-transparent" : "bg-[var(--console-panel)]/40"
-                  } hover:bg-white/5 transition-colors`}
+                  className={`border-b border-border ${
+                    i % 2 === 0 ? "bg-transparent" : "bg-muted/30"
+                  } hover:bg-muted/50 transition-colors`}
                 >
-                  <td className="tabular-readout px-4 py-2.5 font-mono text-xs text-[var(--console-text-dim)]">
+                  <td className="tabular-readout px-4 py-2.5 font-mono text-xs text-muted-foreground">
                     {new Date(entry.timestampIso).toLocaleString([], {
                       month: "short",
                       day: "numeric",
@@ -88,16 +88,16 @@ export function AuditLogTable() {
                       second: "2-digit",
                     })}
                   </td>
-                  <td className="px-4 py-2.5 text-[var(--console-text)]">
+                  <td className="px-4 py-2.5 text-foreground">
                     {entry.siteName}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-[var(--console-text-dim)]">
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
                     {entry.eventType}
                   </td>
                   <td className="px-4 py-2.5">
                     <ControlModeBadge mode={entry.controlMode as ControlModeKey} />
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-[var(--console-text)]">
+                  <td className="px-4 py-2.5 font-mono text-xs text-foreground">
                     {entry.actionRequested}
                   </td>
                   <td className="px-4 py-2.5">

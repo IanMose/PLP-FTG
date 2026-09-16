@@ -34,7 +34,7 @@ function statusColor(status: ChainStepStatus): string {
     case "failed":
       return "var(--verify-failed)";
     default:
-      return "var(--console-text-dim)";
+      return "hsl(var(--muted-foreground))";
   }
 }
 
@@ -70,19 +70,19 @@ export function EventChain({ steps }: EventChainProps) {
                   className={cn(
                     "text-sm font-medium",
                     step.status === "pending"
-                      ? "text-[var(--console-text-dim)]"
-                      : "text-[var(--console-text)]",
+                      ? "text-muted-foreground"
+                      : "text-foreground",
                   )}
                 >
                   {STEP_LABELS[step.key]}
                 </div>
                 {step.detail && (
-                  <div className="tabular-readout font-mono text-xs text-[var(--console-text-dim)] mt-0.5">
+                  <div className="tabular-readout font-mono text-xs text-muted-foreground mt-0.5">
                     {step.detail}
                   </div>
                 )}
                 {step.timestampIso && (
-                  <div className="font-mono text-xs text-[var(--console-text-dim)] opacity-60">
+                  <div className="font-mono text-xs text-muted-foreground opacity-60">
                     {new Date(step.timestampIso).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -96,8 +96,7 @@ export function EventChain({ steps }: EventChainProps) {
             {/* Connector */}
             {i < steps.length - 1 && (
               <div
-                className="ml-3.5 h-4 w-px md:ml-0 md:mt-2 md:h-px md:w-full md:self-start md:mt-3.5"
-                style={{ backgroundColor: "var(--console-border)" }}
+                className="ml-3.5 h-4 w-px bg-border md:ml-0 md:mt-2 md:h-px md:w-full md:self-start md:mt-3.5"
                 aria-hidden
               />
             )}

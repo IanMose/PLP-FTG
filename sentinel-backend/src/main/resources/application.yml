@@ -101,9 +101,9 @@ sentinel:
 ---
 # PostgreSQL profile — local dev only
 # Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
-#
-# LOCAL DEV: Flyway disabled, Hibernate manages schema automatically.
-# No migration conflicts, no permission issues — just run and go.
+# 
+# HYBRID APPROACH: Flyway creates schema on first run, Hibernate validates.
+# For subsequent runs, Flyway only applies new migrations (V3+).
 spring:
   config:
     activate:
@@ -117,13 +117,17 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update  # Hibernate creates/updates tables from entities automatically
+      ddl-auto: none  # Flyway manages schema
     show-sql: false
 
   defer-datasource-initialization: false
 
   flyway:
-    enabled: false  # Disabled locally — no migration files needed for dev
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: false  # Don't fail on checksum changes
 
   sql:
     init:

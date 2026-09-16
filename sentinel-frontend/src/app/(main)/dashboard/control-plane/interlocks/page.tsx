@@ -62,16 +62,16 @@ function InterlockInner() {
       <div className="flex items-center gap-3">
         <Link
           href="/dashboard/control-plane/tanks"
-          className="flex items-center gap-1.5 text-xs text-[var(--console-text-dim)] hover:text-[var(--console-text)] transition-colors"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Tank Monitor
         </Link>
-        <span className="text-[var(--console-border)]">/</span>
-        <h1 className="text-xl font-semibold text-[var(--console-text)]">
+        <span className="text-border">/</span>
+        <h1 className="text-xl font-semibold text-foreground">
           Interlock Control Center
           {siteId && (
-            <span className="ml-2 text-sm font-normal text-[var(--console-text-dim)]">
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
               — {siteId}
             </span>
           )}
@@ -79,11 +79,11 @@ function InterlockInner() {
       </div>
 
       {!siteId && (
-        <div className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] p-6 text-center text-sm text-[var(--console-text-dim)]">
+        <div className="rounded-md border border-border bg-card p-6 text-center text-sm text-muted-foreground">
           Select a site from the{" "}
           <Link
             href="/dashboard/control-plane/tanks"
-            className="underline underline-offset-2 hover:text-[var(--console-text)]"
+            className="underline underline-offset-2 hover:text-foreground"
           >
             Live Tank Monitor
           </Link>{" "}
@@ -94,11 +94,11 @@ function InterlockInner() {
       {siteId && (
         <>
           {/* Latest event chain */}
-          <section className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] p-5">
-            <h2 className="mb-4 text-sm font-medium text-[var(--console-text-dim)]">
+          <section className="rounded-md border border-border bg-card p-5">
+            <h2 className="mb-4 text-sm font-medium text-muted-foreground">
               Latest event chain
               {!latestEvent && (
-                <span className="ml-2 text-[var(--console-text-dim)] font-normal">
+                <span className="ml-2 text-muted-foreground font-normal">
                   (no events yet — chain shown in idle state)
                 </span>
               )}
@@ -108,7 +108,7 @@ function InterlockInner() {
 
           {/* Control mode configuration */}
           <section>
-            <h2 className="mb-3 text-sm font-medium text-[var(--console-text-dim)]">
+            <h2 className="mb-3 text-sm font-medium text-muted-foreground">
               Control mode configuration
             </h2>
             <ControlModeConfigPanel siteId={siteId} />
@@ -117,26 +117,26 @@ function InterlockInner() {
           {/* Recent log snippet */}
           {recentEvents.length > 0 && (
             <section>
-              <h2 className="mb-3 text-sm font-medium text-[var(--console-text-dim)]">
+              <h2 className="mb-3 text-sm font-medium text-muted-foreground">
                 Recent actuation events
               </h2>
               <div className="space-y-2">
                 {recentEvents.slice(0, 3).map((e) => (
                   <div
                     key={e.id}
-                    className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] px-4 py-2.5 flex items-center justify-between text-xs"
+                    className="rounded-md border border-border bg-card px-4 py-2.5 flex items-center justify-between text-xs"
                   >
-                    <span className="text-[var(--console-text-dim)] font-mono">
+                    <span className="text-muted-foreground font-mono">
                       {new Date(e.timestampIso).toLocaleString()}
                     </span>
-                    <span className="text-[var(--console-text)]">{e.eventType}</span>
+                    <span className="text-foreground">{e.eventType}</span>
                     <span
                       className={`font-mono ${
                         e.verifiedState === "CONFIRMED_CLOSED"
-                          ? "text-emerald-400"
+                          ? "text-emerald-600 dark:text-emerald-400"
                           : e.verifiedState === "TIMEOUT"
-                            ? "text-orange-400"
-                            : "text-amber-400"
+                            ? "text-orange-600 dark:text-orange-400"
+                            : "text-amber-600 dark:text-amber-400"
                       }`}
                     >
                       {e.verifiedState}
@@ -146,7 +146,7 @@ function InterlockInner() {
               </div>
               <Link
                 href="/dashboard/control-plane/audit-log"
-                className="mt-2 inline-block text-xs text-[var(--console-text-dim)] hover:text-[var(--console-text)] underline underline-offset-2"
+                className="mt-2 inline-block text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
                 View full audit log →
               </Link>
@@ -160,7 +160,7 @@ function InterlockInner() {
 
 export default function InterlockControlCenterPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-[var(--console-text-dim)]">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
       <InterlockInner />
     </Suspense>
   );

@@ -26,6 +26,7 @@ import {
   LayoutDashboard,
   Zap,
   Leaf,
+  Droplets,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
@@ -70,51 +71,16 @@ export interface NavGroup {
 }
 
 export const sidebarItems: NavGroup[] = [
-  // ── 0. Control Plane ─────────────────────────────────────────────────────────
+  // ── 0. Executive Overview ────────────────────────────────────────────────────
   {
     id: 0,
-    label: "Control Plane",
+    label: "Overview",
     items: [
-      {
-        id: "control-plane",
-        title: "Control Plane",
-        icon: Gauge,
-        subItems: [
-          {
-            id: "cp-tanks",
-            title: "Live Tank Monitor",
-            url: "/dashboard/control-plane/tanks",
-            icon: Gauge,
-            badge: "new",
-          },
-          {
-            id: "cp-interlocks",
-            title: "Interlock Center",
-            url: "/dashboard/control-plane/interlocks",
-            icon: Layers,
-            badge: "new",
-          },
-          {
-            id: "cp-demo",
-            title: "Control Room",
-            url: "/dashboard/control-plane/demo",
-            icon: MonitorPlay,
-            badge: "new",
-          },
-          {
-            id: "cp-audit",
-            title: "Audit Log",
-            url: "/dashboard/control-plane/audit-log",
-            icon: ScrollText,
-          },
-        ],
-      },
       {
         id: "executive",
         title: "Executive Dashboard",
         url: "/dashboard/executive",
         icon: LayoutDashboard,
-        badge: "new",
       },
       {
         id: "esg-report",
@@ -122,6 +88,45 @@ export const sidebarItems: NavGroup[] = [
         url: "/dashboard/esg",
         icon: Leaf,
         badge: "new",
+      },
+    ],
+  },
+
+  // ── 1. Tank Operations (formerly Control Plane) ──────────────────────────────
+  {
+    id: 1,
+    label: "Tank Operations",
+    items: [
+      {
+        id: "tank-ops",
+        title: "Tank Monitoring",
+        icon: Droplets,
+        subItems: [
+          {
+            id: "tank-live",
+            title: "Live Monitor",
+            url: "/dashboard/control-plane/tanks",
+            icon: Gauge,
+          },
+          {
+            id: "tank-interlocks",
+            title: "Interlock Center",
+            url: "/dashboard/control-plane/interlocks",
+            icon: Layers,
+          },
+          {
+            id: "tank-control-room",
+            title: "Control Room",
+            url: "/dashboard/control-plane/demo",
+            icon: MonitorPlay,
+          },
+          {
+            id: "tank-audit",
+            title: "Audit Log",
+            url: "/dashboard/control-plane/audit-log",
+            icon: ScrollText,
+          },
+        ],
       },
       {
         id: "live-demo",
@@ -133,35 +138,36 @@ export const sidebarItems: NavGroup[] = [
       },
     ],
   },
-  // ── 1. Command Center ───────────────────────────────────────────────────────
+
+  // ── 2. Pipeline Operations (formerly Command Center) ─────────────────────────
   {
-    id: 1,
-    label: "Command Center",
+    id: 2,
+    label: "Pipeline Operations",
     items: [
       {
-        id: "sentinel",
-        title: "Overview",
+        id: "pipeline-ops",
+        title: "Pipeline Monitoring",
         icon: ShieldAlert,
         subItems: [
           {
-            id: "sentinel-overview",
+            id: "pipeline-dashboard",
             title: "Dashboard",
             url: "/dashboard/sentinel",
           },
           {
-            id: "sentinel-alerts",
+            id: "pipeline-alerts",
             title: "Alerts",
             url: "/dashboard/sentinel/alerts",
             icon: Bell,
           },
           {
-            id: "sentinel-analytics",
+            id: "pipeline-analytics",
             title: "Analytics",
             url: "/dashboard/sentinel/analytics",
             icon: BarChart2,
           },
           {
-            id: "sentinel-roi",
+            id: "pipeline-roi",
             title: "ROI Calculator",
             url: "/dashboard/sentinel/roi",
             icon: Calculator,
@@ -169,7 +175,7 @@ export const sidebarItems: NavGroup[] = [
         ],
       },
       {
-        id: "sites",
+        id: "corridor-map",
         title: "Corridor Map",
         url: "/dashboard/sites",
         icon: Map,
@@ -177,9 +183,9 @@ export const sidebarItems: NavGroup[] = [
     ],
   },
 
-  // ── 2. HSE Operations ───────────────────────────────────────────────────────
+  // ── 3. HSE Operations ───────────────────────────────────────────────────────
   {
-    id: 2,
+    id: 3,
     label: "HSE Operations",
     items: [
       {
@@ -248,29 +254,6 @@ export const sidebarItems: NavGroup[] = [
     ],
   },
 
-  // ── 3. Workforce ─────────────────────────────────────────────────────────────
-  {
-    id: 3,
-    label: "Workforce",
-    requiredRoles: ["Admin", "HSE Manager", "Auditor", "Station Manager"],
-    items: [
-      {
-        id: "technicians",
-        title: "Technicians",
-        url: "/dashboard/workforce/technicians",
-        icon: UserCog,
-        badge: "new",
-      },
-      {
-        id: "qualifications",
-        title: "Qualifications",
-        url: "/dashboard/workforce/qualifications",
-        icon: Award,
-        badge: "new",
-      },
-    ],
-  },
-
   // ── 4. ML Administration ─────────────────────────────────────────────────────
   {
     id: 4,
@@ -321,10 +304,10 @@ export const sidebarItems: NavGroup[] = [
     ],
   },
 
-  // ── 5. Accounts ──────────────────────────────────────────────────────────────
+  // ── 5. Settings ──────────────────────────────────────────────────────────────
   {
     id: 5,
-    label: "Accounts",
+    label: "Settings",
     items: [
       {
         id: "users",
@@ -339,6 +322,29 @@ export const sidebarItems: NavGroup[] = [
         url: "/dashboard/roles",
         icon: ShieldCheck,
         roles: ["Admin"],
+      },
+    ],
+  },
+
+  // ── 6. Workforce ─────────────────────────────────────────────────────────────
+  {
+    id: 6,
+    label: "Workforce",
+    requiredRoles: ["Admin", "HSE Manager", "Auditor", "Station Manager"],
+    items: [
+      {
+        id: "technicians",
+        title: "Technicians",
+        url: "/dashboard/workforce/technicians",
+        icon: UserCog,
+        badge: "new",
+      },
+      {
+        id: "qualifications",
+        title: "Qualifications",
+        url: "/dashboard/workforce/qualifications",
+        icon: Award,
+        badge: "new",
       },
     ],
   },

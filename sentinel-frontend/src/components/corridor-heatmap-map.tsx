@@ -95,15 +95,15 @@ type TileTheme = "light" | "terrain";
 const TILE_LAYERS: Record<TileTheme, { url: string; attribution: string; name: string }> = {
   light: {
     name: "Light",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution:
-      "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors, © <a href='https://carto.com/'>CARTO</a>",
+      "© <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
   },
   terrain: {
     name: "Terrain",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    url: "https://tile.opentopomap.org/{z}/{x}/{y}.png",
     attribution:
-      "Tiles © <a href='https://www.esri.com/'>Esri</a> &mdash; Esri, USGS, NOAA",
+      "© <a href='https://opentopomap.org'>OpenTopoMap</a> contributors, © <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>",
   },
 };
 

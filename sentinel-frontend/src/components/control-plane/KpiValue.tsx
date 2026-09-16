@@ -1,8 +1,7 @@
 "use client";
 
 // KpiValue — displays formatted numbers for Executive KPI cards.
-// NumberFlow animation is disabled due to Turbopack transpilation issues.
-// Using plain formatted numbers instead — works reliably in test mode.
+// Uses theme-aware colors that work in both light and dark modes.
 
 interface KpiValueProps {
   value: number;
@@ -18,11 +17,11 @@ export function KpiValue({ value, suffix, prefix, decimals = 0 }: KpiValueProps)
   }).format(value);
 
   return (
-    <span className="tabular-nums text-3xl font-semibold text-[var(--console-text)]">
+    <span className="tabular-nums text-3xl font-semibold text-foreground">
       {prefix}
       {formatted}
       {suffix && (
-        <span className="ml-0.5 text-lg font-normal text-[var(--console-text-dim)]">
+        <span className="ml-0.5 text-lg font-normal text-muted-foreground">
           {suffix}
         </span>
       )}

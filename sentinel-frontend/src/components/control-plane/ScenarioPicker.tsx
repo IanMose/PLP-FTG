@@ -44,13 +44,13 @@ export function ScenarioPicker({
             onClick={() => onRun(s.id)}
             className={cn(
               "rounded-md border p-4 text-left transition-colors",
-              "border-[var(--console-border)] bg-[var(--console-panel)]",
-              "hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30",
+              "border-border bg-card",
+              "hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isActive && "border-[var(--risk-warning)] bg-amber-900/10",
             )}
           >
-            <div className="font-medium text-[var(--console-text)] text-sm">
+            <div className="font-medium text-foreground text-sm">
               {s.label}
             </div>
             <div

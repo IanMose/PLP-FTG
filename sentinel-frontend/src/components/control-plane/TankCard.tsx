@@ -18,8 +18,8 @@ export function TankCard({ tank }: TankCardProps) {
       href={`/dashboard/control-plane/interlocks?site=${tank.siteId}`}
       className={cn(
         "block rounded-md border transition-colors",
-        "bg-[var(--console-panel)] border-[var(--console-border)]",
-        "hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30",
+        "bg-card border-border",
+        "hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
       style={{ borderLeftWidth: 4, borderLeftColor: borderColor }}
     >
@@ -27,10 +27,10 @@ export function TankCard({ tank }: TankCardProps) {
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div>
-            <div className="font-mono text-sm font-medium text-[var(--console-text)]">
+            <div className="font-mono text-sm font-medium text-foreground">
               {tank.tankId}
             </div>
-            <div className="text-xs text-[var(--console-text-dim)] mt-0.5">
+            <div className="text-xs text-muted-foreground mt-0.5">
               {tank.siteName}
             </div>
           </div>
@@ -43,15 +43,15 @@ export function TankCard({ tank }: TankCardProps) {
 
           <div className="flex-1 space-y-1.5 min-w-0">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--console-text-dim)]">Flow</span>
-              <span className="tabular-readout font-mono text-[var(--console-text)]">
+              <span className="text-muted-foreground">Flow</span>
+              <span className="tabular-readout font-mono text-foreground">
                 {tank.flowRateLpm.toLocaleString()} L/min
               </span>
             </div>
             {tank.levelRateOfChange !== null && (
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[var(--console-text-dim)]">Rate</span>
-                <span className="tabular-readout font-mono text-[var(--console-text)]">
+                <span className="text-muted-foreground">Rate</span>
+                <span className="tabular-readout font-mono text-foreground">
                   +{tank.levelRateOfChange.toFixed(2)}%/s
                 </span>
               </div>
@@ -62,11 +62,11 @@ export function TankCard({ tank }: TankCardProps) {
 
         {/* Footer */}
         {!tank.loadingActive && (
-          <div className="mt-3 text-xs text-[var(--console-text-dim)] border-t border-[var(--console-border)] pt-2">
+          <div className="mt-3 text-xs text-muted-foreground border-t border-border pt-2">
             Loading not active
           </div>
         )}
-        <div className="mt-2 text-xs text-[var(--console-text-dim)]">
+        <div className="mt-2 text-xs text-muted-foreground">
           Updated{" "}
           {new Date(tank.updatedAt).toLocaleTimeString([], {
             hour: "2-digit",

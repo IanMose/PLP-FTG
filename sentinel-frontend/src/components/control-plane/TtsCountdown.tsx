@@ -40,7 +40,7 @@ export function TtsCountdown({ initialSeconds, onTick }: TtsCountdownProps) {
 
   if (remaining === null) {
     return (
-      <p className="text-xs text-[var(--console-text-dim)]">No active trend</p>
+      <p className="text-xs text-muted-foreground">No active trend</p>
     );
   }
 
@@ -49,14 +49,14 @@ export function TtsCountdown({ initialSeconds, onTick }: TtsCountdownProps) {
 
   return (
     <div className="mt-1 flex items-center gap-1.5">
-      <span className="text-xs text-[var(--console-text-dim)]">TTS</span>
+      <span className="text-xs text-muted-foreground">TTS</span>
       <span
         className={`tabular-readout font-mono text-sm font-semibold ${
           isEmpty
             ? "text-[var(--risk-emergency)]"
             : isCritical
               ? "text-[var(--risk-critical)]"
-              : "text-[var(--console-text)]"
+              : "text-foreground"
         }`}
       >
         {isEmpty ? "OVERDUE" : formatTts(remaining)}

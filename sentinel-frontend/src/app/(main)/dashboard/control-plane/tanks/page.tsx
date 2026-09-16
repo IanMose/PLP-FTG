@@ -21,10 +21,10 @@ export default function LiveTankMonitorPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--console-text)]">
+          <h1 className="text-xl font-semibold text-foreground">
             Live Tank Monitor
           </h1>
-          <p className="text-xs text-[var(--console-text-dim)] mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Auto-refreshes every 3 seconds — mock data active until backend is live
           </p>
         </div>
@@ -33,7 +33,7 @@ export default function LiveTankMonitorPage() {
         <select
           value={siteId ?? ""}
           onChange={(e) => setSiteId(e.target.value || undefined)}
-          className="rounded-md border border-[var(--console-border)] bg-[var(--console-panel)] px-3 py-1.5 text-sm text-[var(--console-text)] focus:outline-none focus:ring-1 focus:ring-white/20"
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">All sites</option>
           {SITES.map((s) => (
@@ -46,19 +46,19 @@ export default function LiveTankMonitorPage() {
 
       {/* States */}
       {isError && (
-        <div className="rounded-md border border-[var(--console-border)] p-6 text-center text-sm text-[var(--console-text-dim)]">
+        <div className="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
           Telemetry unavailable — no data shown rather than a stale reading.
         </div>
       )}
 
       {isLoading && (
-        <div className="text-sm text-[var(--console-text-dim)] animate-pulse">
+        <div className="text-sm text-muted-foreground animate-pulse">
           Loading tank telemetry…
         </div>
       )}
 
       {tanks && tanks.length === 0 && (
-        <div className="text-sm text-[var(--console-text-dim)]">
+        <div className="text-sm text-muted-foreground">
           No tanks reporting for this filter.
         </div>
       )}
@@ -71,7 +71,7 @@ export default function LiveTankMonitorPage() {
       </div>
 
       {/* Legend */}
-      <div className="pt-4 border-t border-[var(--console-border)] flex flex-wrap gap-4 text-xs text-[var(--console-text-dim)]">
+      <div className="pt-4 border-t border-border flex flex-wrap gap-4 text-xs text-muted-foreground">
         {(["NORMAL", "WATCH", "WARNING", "CRITICAL", "EMERGENCY"] as const).map((band) => (
           <span key={band} className="flex items-center gap-1.5">
             <span
