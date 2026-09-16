@@ -2,7 +2,7 @@
 // This file renders dynamic AI-generated JSON — strict typing not applicable.
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Bot,
   X,
@@ -22,6 +22,9 @@ import {
   Zap,
   Info,
   Download,
+  Globe,
+  Scale,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +68,18 @@ const REPORT_BUTTONS = [
     icon: <FileText className="size-3" />,
     question: "Generate a full HSE report",
     color: "border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30",
+  },
+  {
+    label: "Pattern Analysis",
+    icon: <BarChart3 className="size-3" />,
+    question: "Generate a site pattern analysis",
+    color: "border-cyan-300 text-cyan-700 hover:bg-cyan-50 dark:border-cyan-700 dark:text-cyan-400 dark:hover:bg-cyan-950/30",
+  },
+  {
+    label: "Legal Exposure",
+    icon: <Scale className="size-3" />,
+    question: "Generate a legal exposure memo",
+    color: "border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/30",
   },
 ] as const;
 
@@ -591,8 +606,49 @@ export function AiChatBot() {
   ]);
   const [input, setInput]     = useState("");
   const [loading, setLoading] = useState(false);
+  const [language, setLanguage] = useState<"en" | "sw">("en");
+  const [langLoading, setLangLoading] = useState(false);
   const bottomRef             = useRef<HTMLDivElement>(null);
   const inputRef              = useRef<HTMLInputElement>(null);
+
+  // Load current language from backend on open
+  useEffect(() => {
+    if (open) {
+      fetch("/api/proxy/ai-language")
+        .then((r) => r.json())
+        .then((d) => { if (d.language) setLanguage(d.language); })
+        .catch(() => {});
+    }
+  }, [open]);
+
+  const toggleLanguage = useCallback(async () => {
+    const next = language === "en" ? "sw" : "en";
+    setLangLoading(true);
+    try {
+      const res = await fetch("/api/proxy/ai-language", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: next }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLanguage(next);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "ai",
+            text: next === "sw"
+              ? "Sawa — sasa nitaandika ripoti na masimulizi kwa Kiswahili. Swali lolote?"
+              : "Switched back to English. All reports and narratives will now be in English.",
+          },
+        ]);
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setLangLoading(false);
+    }
+  }, [language]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -685,6 +741,17 @@ export function AiChatBot() {
               <p className="text-sm font-semibold">Sentinel AI</p>
               <p className="text-[10px] opacity-70">Ask anything · Generate reports</p>
             </div>
+            {/* Language toggle — EN / SW */}
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              disabled={langLoading}
+              title={language === "en" ? "Switch to Kiswahili" : "Switch to English"}
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-white/15 hover:bg-white/30 transition-colors disabled:opacity-40 border border-white/20"
+            >
+              <Globe className="size-3" />
+              {langLoading ? "..." : language === "en" ? "EN" : "SW"}
+            </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -695,11 +762,22 @@ export function AiChatBot() {
           </div>
 
           {/* Quick report buttons — always visible at top */}
-          <div className="px-3 pt-2 pb-1 flex-shrink-0 border-b">
-            <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold mb-1.5">
-              Generate a report
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
+          <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">
+                Generate a report
+              </p>
+              {/* Language indicator */}
+              <span className={cn(
+                "text-[9px] font-semibold px-1.5 py-0.5 rounded-full",
+                language === "sw"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              )}>
+                {language === "sw" ? "🌍 Kiswahili" : "EN"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
               {REPORT_BUTTONS.map((btn) => (
                 <button
                   key={btn.label}
@@ -707,12 +785,12 @@ export function AiChatBot() {
                   onClick={() => send(btn.question)}
                   disabled={loading}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40",
+                    "flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[10px] font-medium transition-colors disabled:opacity-40",
                     btn.color
                   )}
                 >
                   {btn.icon}
-                  {btn.label}
+                  <span className="truncate">{btn.label}</span>
                 </button>
               ))}
             </div>

@@ -3,6 +3,8 @@ package com.sentinel.ai;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sentinel.actuation.ActuationService;
 import com.sentinel.alert.AlertRepository;
+import com.sentinel.alert.NarrativeService;
+import com.sentinel.capa.AiCapaService;
 import com.sentinel.capa.CapaRepository;
 import com.sentinel.event.EventService;
 import com.sentinel.quality.QualityService;
@@ -57,20 +59,24 @@ public class AiChatController {
     private final IncidentRepository incidentRepository;
     private final QualityService     qualityService;
     private final ObjectMapper       objectMapper;
+    private final NarrativeService   narrativeService;
+    private final AiCapaService      aiCapaService;
 
     @Value("${sentinel.llm.groq-api-key:}")
     private String groqApiKey;
 
-    @Value("${sentinel.llm.model:llama-3.1-8b-instant}")
+    @Value("${sentinel.llm.model:openai/gpt-oss-20b}")
     private String groqModel;
 
     @Value("${sentinel.llm.enabled:true}")
     private boolean llmEnabled;
 
     private static final String GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions";
-    private static final int    TIMEOUT_MS = 10_000;
+    private static final int    TIMEOUT_MS = 20_000; // raised for 70b model
     private static final int    MAX_TOKENS_ANSWER = 600;
-    private static final int    MAX_TOKENS_REPORT = 1200;
+    private static final int    MAX_TOKENS_REPORT = 4096; // raised from 1200 — full report needs space
+    // Use 70b for structured reports, keep 8b-instant for fast conversational answers
+    private static final String REPORT_MODEL = "openai/gpt-oss-120b";
 
     // ── System prompt for conversational answers ──────────────────────────────
 
@@ -155,13 +161,62 @@ public class AiChatController {
         return ResponseEntity.ok(Map.of("type", "answer", "answer", answer));
     }
 
+    // ── Language toggle endpoint ──────────────────────────────────────────────
+
+    /**
+     * Toggle the AI narrative/CAPA language at runtime.
+     *
+     * POST /api/ai/language
+     * Body: { "language": "sw" }  ->  Switch to Swahili (Kiswahili)
+     * Body: { "language": "en" }  ->  Switch back to English (default)
+     *
+     * Toggles NarrativeService (alert narratives) and AiCapaService (CAPA drafts).
+     * Takes effect immediately for all subsequent LLM calls -- no restart needed.
+     */
+    @PostMapping("/language")
+    public ResponseEntity<Map<String, Object>> setLanguage(@RequestBody LanguageRequest request) {
+        String lang = request.language();
+        if (lang == null || (!lang.equalsIgnoreCase("en") && !lang.equalsIgnoreCase("sw"))) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "Unsupported language. Use 'en' (English) or 'sw' (Swahili)."
+            ));
+        }
+        narrativeService.setLanguage(lang);
+        aiCapaService.setLanguage(lang);
+        log.info("AiChatController: language toggled to '{}' by API request", lang);
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "language", lang.toLowerCase(),
+            "languageName", lang.equalsIgnoreCase("sw") ? "Kiswahili (Swahili)" : "English",
+            "message", lang.equalsIgnoreCase("sw")
+                ? "AI narratives and CAPA drafts will now be generated in Swahili."
+                : "AI narratives and CAPA drafts will now be generated in English.",
+            "affects", List.of("alert narratives", "CAPA drafts")
+        ));
+    }
+
+    /**
+     * GET /api/ai/language -- returns the current active language.
+     */
+    @GetMapping("/language")
+    public ResponseEntity<Map<String, Object>> getLanguage() {
+        String lang = narrativeService.getLanguage();
+        return ResponseEntity.ok(Map.of(
+            "language", lang,
+            "languageName", "sw".equals(lang) ? "Kiswahili (Swahili)" : "English"
+        ));
+    }
+
     // ── Report intent detection ───────────────────────────────────────────────
 
     enum ReportType {
-        ESG_SUMMARY    ("esg_summary",  "ESG Summary Report"),
-        SITE_RISK      ("site_risk",    "Site Risk Report"),
-        CAPA_STATUS    ("capa_status",  "CAPA Status Report"),
-        HSE_FULL       ("hse_full",     "Full HSE Report");
+        ESG_SUMMARY          ("esg_summary",          "ESG Summary Report"),
+        SITE_RISK            ("site_risk",             "Site Risk Report"),
+        CAPA_STATUS          ("capa_status",           "CAPA Status Report"),
+        HSE_FULL             ("hse_full",              "Full HSE Report"),
+        SITE_PATTERN_ANALYSIS("site_pattern_analysis", "Site Pattern Analysis"),
+        LEGAL_EXPOSURE_MEMO  ("legal_exposure_memo",   "Legal Exposure Memo");
 
         final String key;
         final String title;
@@ -174,10 +229,24 @@ public class AiChatController {
         // Must contain a report/generate/summary trigger word
         boolean hasReportTrigger = lower.contains("report") || lower.contains("generate")
             || lower.contains("summary") || lower.contains("give me") || lower.contains("show me")
-            || lower.contains("create") || lower.contains("produce") || lower.contains("full");
+            || lower.contains("create") || lower.contains("produce") || lower.contains("full")
+            || lower.contains("analysis") || lower.contains("analyse") || lower.contains("analyze")
+            || lower.contains("memo") || lower.contains("exposure");
 
         if (!hasReportTrigger) return null;
 
+        // Legal exposure memo — check before generic HSE to avoid false matches
+        if (lower.contains("legal") || lower.contains("liability") || lower.contains("exposure memo")
+                || lower.contains("regulatory exposure") || lower.contains("kimeu")
+                || lower.contains("compensation") || lower.contains("lawsuit")) {
+            return ReportType.LEGAL_EXPOSURE_MEMO;
+        }
+        // Pattern analysis — must be explicit
+        if (lower.contains("pattern") || lower.contains("trend analysis")
+                || lower.contains("recurring") || lower.contains("cluster analysis")
+                || lower.contains("site pattern") || lower.contains("pattern analysis")) {
+            return ReportType.SITE_PATTERN_ANALYSIS;
+        }
         if (lower.contains("esg") || lower.contains("sustainability") || lower.contains("environmental, social")) {
             return ReportType.ESG_SUMMARY;
         }
@@ -206,10 +275,12 @@ public class AiChatController {
         String period  = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm")) + " UTC";
 
         String prompt = switch (type) {
-            case ESG_SUMMARY -> buildEsgReportPrompt(context, period);
-            case SITE_RISK   -> buildSiteRiskPrompt(context, period);
-            case CAPA_STATUS -> buildCapaStatusPrompt(context, period);
-            case HSE_FULL    -> buildHseFullPrompt(context, period);
+            case ESG_SUMMARY           -> buildEsgReportPrompt(context, period);
+            case SITE_RISK             -> buildSiteRiskPrompt(context, period);
+            case CAPA_STATUS           -> buildCapaStatusPrompt(context, period);
+            case HSE_FULL              -> buildHseFullPrompt(context, period);
+            case SITE_PATTERN_ANALYSIS -> buildPatternAnalysisPrompt(context, period);
+            case LEGAL_EXPOSURE_MEMO   -> buildLegalExposureMemoPrompt(context, period);
         };
 
         // Try LLM first
@@ -393,6 +464,89 @@ public class AiChatController {
                 "requiresVerification": "root cause, environmental impact, community impact"
               },
               "disclaimer": "AI-generated HSE report. Requires HSE professional review. Not a confirmed investigation finding."
+            }
+            Return ONLY valid JSON.
+            """;
+    }
+
+    private String buildPatternAnalysisPrompt(String context, String period) {
+        return """
+            LIVE DATA (90-day window where available):
+            """ + context + """
+
+            Generate a Site Pattern Analysis Report as JSON:
+            {
+              "headline": "one-sentence pattern summary across all sites",
+              "analysisPeriod": "90 days",
+              "sitePatterns": [
+                {
+                  "siteId": "site-003",
+                  "siteName": "Makueni Pipeline Section (Thange Corridor)",
+                  "riskClassification": "HIGH-RISK WATCH",
+                  "incidentsLast30d": 0,
+                  "incidentsLast90d": 0,
+                  "trend": "ESCALATING|STABLE|DECLINING|NO_DATA",
+                  "patternNote": "what the data pattern means",
+                  "legalContext": "Kimeu v. KPC reference if applicable",
+                  "recommendedAction": "specific action for this site"
+                }
+              ],
+              "systemWidePatterns": ["pattern finding 1", "pattern finding 2"],
+              "predictiveRiskSignals": [
+                {
+                  "signal": "description of the pattern signal",
+                  "site": "site-003 or SYSTEM-WIDE",
+                  "urgency": "IMMEDIATE|SHORT_TERM|MONITOR",
+                  "basisInData": "what data supports this signal"
+                }
+              ],
+              "comparisonToHistoricalIncidents": {
+                "sinaiParallels": "how current patterns compare to pre-Sinai conditions",
+                "thangeParallels": "how current patterns compare to pre-Thange conditions",
+                "divergences": "where current conditions are better than historical baseline"
+              },
+              "managementRecommendations": ["recommendation 1", "recommendation 2"],
+              "disclaimer": "AI pattern analysis. Requires HSE professional review."
+            }
+            Return ONLY valid JSON.
+            """;
+    }
+
+    private String buildLegalExposureMemoPrompt(String context, String period) {
+        return """
+            LIVE DATA:
+            """ + context + """
+
+            Generate a Legal Exposure Memo as JSON. This is a structured reference memo for KPC's \
+            legal team — NOT legal advice. Frame everything accordingly.
+            {
+              "memoTitle": "Legal Exposure Assessment — KPC Pipeline Operations",
+              "memoDate": "date",
+              "preparedBy": "Sentinel AI — FOR LEGAL TEAM REVIEW ONLY",
+              "overallExposureLevel": "HIGH|MEDIUM|LOW",
+              "disclaimer": "THIS IS AN AI-GENERATED REFERENCE MEMO ONLY. Not legal advice.",
+              "precedentContext": {
+                "caseReference": "Kimeu & 3,074 others v. Kenya Pipeline Company Ltd [2025] KEELC 5239",
+                "court": "Kenya Environment and Land Court",
+                "grossAward": "KES 3.02 billion",
+                "incident": "2015 Thange River spill",
+                "rootCause": "Undetected valve/tank failure",
+                "relevance": "why this case is the controlling precedent"
+              },
+              "currentExposureFactors": [
+                {
+                  "factor": "factor name",
+                  "value": "current data value",
+                  "exposureImplication": "what this means for legal exposure — no speculation"
+                }
+              ],
+              "mitigatingFactors": ["how Sentinel monitoring reduces exposure", "other mitigants"],
+              "legalTeamActions": ["action 1", "action 2"],
+              "regulatoryObligations": {
+                "nema": "NEMA notification requirements if applicable",
+                "erc": "Energy and Petroleum Regulatory Authority obligations",
+                "osha": "Occupational Safety and Health Act obligations"
+              }
             }
             Return ONLY valid JSON.
             """;
@@ -602,6 +756,124 @@ public class AiChatController {
                 ));
                 report.put("disclaimer", "AI-generated HSE report. Requires HSE professional review before external use. Does not constitute a confirmed investigation finding.");
             }
+            case SITE_PATTERN_ANALYSIS -> {
+                long mk90  = safeIncidentsBySite("site-003", LocalDateTime.now().minusDays(90));
+                long sn90  = safeIncidentsBySite("site-006", LocalDateTime.now().minusDays(90));
+                long mk30  = safeIncidentsBySite("site-003", LocalDateTime.now().minusDays(30));
+                long sn30  = safeIncidentsBySite("site-006", LocalDateTime.now().minusDays(30));
+                long totalEvents = safeEventCount(LocalDateTime.now().minusDays(90));
+                long overdue = safeCapaOverdue();
+
+                report.put("headline", "Pattern analysis across 90 days — " + totalEvents + " events detected. High-risk sites show " + (mk90 + sn90) + " combined incidents.");
+                report.put("analysisPeriod", "90 days (last 3 months)");
+                report.put("sitePatterns", List.of(
+                    Map.of(
+                        "siteId", "site-003",
+                        "siteName", "Makueni Pipeline Section (Thange Corridor)",
+                        "riskClassification", "HIGH-RISK WATCH",
+                        "incidentsLast30d", mk30,
+                        "incidentsLast90d", mk90,
+                        "trend", mk90 > 0 ? (mk30 > mk90 / 3 ? "ESCALATING" : "STABLE") : "NO_DATA",
+                        "patternNote", mk90 > 2
+                            ? "Recurring incidents at this site. Pattern consistent with systemic control gap rather than isolated events."
+                            : "Low incident frequency at this site. Monitoring active.",
+                        "legalContext", "Kimeu & 3,074 others v. KPC ([2025] KEELC 5239) — KES 3.02B. Any unresolved pattern here carries precedent liability exposure.",
+                        "recommendedAction", "Review all open CAPAs at this site. Any incident pattern exceeding 3 events/month at this site should trigger a management review."
+                    ),
+                    Map.of(
+                        "siteId", "site-006",
+                        "siteName", "Sinendet Pump Station",
+                        "riskClassification", "HIGH-RISK WATCH",
+                        "incidentsLast30d", sn30,
+                        "incidentsLast90d", sn90,
+                        "trend", sn90 > 0 ? (sn30 > sn90 / 3 ? "ESCALATING" : "STABLE") : "NO_DATA",
+                        "patternNote", sn90 > 2
+                            ? "Pump station incidents are clustering. Pump failures escalate faster than terminal tank failures — priority investigation required."
+                            : "No significant clustering at this site.",
+                        "legalContext", "N/A",
+                        "recommendedAction", "Confirm pump inspection schedule is current. Review maintenance records for recurring failure modes."
+                    )
+                ));
+                report.put("systemWidePatterns", List.of(
+                    totalEvents > 20
+                        ? "High event frequency across the network — " + totalEvents + " events in 90 days indicates active operational risk environment."
+                        : "Event frequency within expected range for 7-site network.",
+                    overdue > 0
+                        ? "CAPA backlog of " + overdue + " overdue actions is a leading indicator of repeat incidents — unresolved corrective actions create repeat failure conditions."
+                        : "No overdue CAPAs detected — governance discipline maintained.",
+                    "The Sinai 2011 and Thange 2015 incidents were both preceded by unaddressed inspection and maintenance gaps at the same site over multiple cycles. Sentinel's pattern detection is designed to flag exactly this accumulation."
+                ));
+                report.put("predictiveRiskSignals", List.of(
+                    mk90 > 3 ? "Makueni (site-003) incident clustering over 90 days — warrants engineering review of valve and level monitoring calibration" : "Makueni: no significant clustering signal",
+                    sn90 > 3 ? "Sinendet (site-006) clustering — pump station failure modes need investigation" : "Sinendet: no significant clustering signal",
+                    overdue > 2 ? "CAPA overdue rate is rising — governance breakdown signal" : "CAPA governance current"
+                ));
+                report.put("managementRecommendations", List.of(
+                    "Schedule a management review for any site with >3 incidents in 30 days",
+                    "Cross-reference CAPA closure rates with site-specific incident trends — sites with open CAPAs and rising incidents are the highest-priority intervention targets",
+                    "The Thange corridor pattern (site-003) should be reviewed at board level given the Kimeu precedent"
+                ));
+                report.put("disclaimer", "AI pattern analysis. Based on Sentinel telemetry counts. Requires HSE professional review and field verification before management action.");
+            }
+            case LEGAL_EXPOSURE_MEMO -> {
+                long mk30  = safeIncidentsBySite("site-003", LocalDateTime.now().minusDays(30));
+                long sn30  = safeIncidentsBySite("site-006", LocalDateTime.now().minusDays(30));
+                long overdue = safeCapaOverdue();
+                long events30d = safeEventCount(LocalDateTime.now().minusDays(30));
+                String riskLevel = (mk30 > 3 || sn30 > 3 || overdue > 3) ? "HIGH" : "MEDIUM";
+
+                report.put("memoTitle", "Legal Exposure Assessment — KPC Pipeline Operations");
+                report.put("memoDate", period);
+                report.put("preparedBy", "Sentinel AI — FOR LEGAL TEAM REVIEW ONLY");
+                report.put("overallExposureLevel", riskLevel);
+                report.put("disclaimer",
+                    "THIS IS AN AI-GENERATED REFERENCE MEMO ONLY. It does not constitute legal advice. " +
+                    "All legal determinations require qualified legal counsel. This memo is prepared solely " +
+                    "to assist KPC legal team with situational awareness.");
+                report.put("precedentContext", Map.of(
+                    "caseReference", "Kimeu & 3,074 others v. Kenya Pipeline Company Ltd [2025] KEELC 5239",
+                    "court", "Kenya Environment and Land Court",
+                    "grossAward", "KES 3.02 billion",
+                    "incident", "2015 Thange River spill at Makueni Pipeline Section",
+                    "rootCause", "Undetected valve/tank failure — fuel ran for hours before action was taken",
+                    "relevance", "This judgment is the controlling precedent for KPC pipeline incident liability. " +
+                        "Any similar undetected failure at site-003 or site-006 would be evaluated against this standard."
+                ));
+                report.put("currentExposureFactors", List.of(
+                    Map.of(
+                        "factor", "Active incidents at Thange corridor site (site-003)",
+                        "value", mk30 + " incidents in last 30 days",
+                        "exposureImplication", mk30 > 0
+                            ? "Active incidents at the exact site of the Kimeu judgment create contemporaneous evidence of operational risk. Documentation and response protocol compliance is critical."
+                            : "No recent incidents at site-003. Sentinel monitoring active — continued monitoring reduces liability exposure."
+                    ),
+                    Map.of(
+                        "factor", "Overdue corrective actions (CAPAs)",
+                        "value", overdue + " overdue",
+                        "exposureImplication", overdue > 0
+                            ? "Overdue CAPAs are documented evidence of known-but-unresolved hazards. In the Thange litigation, delayed corrective action was a primary basis for liability finding. Close all overdue CAPAs as a priority."
+                            : "No overdue CAPAs. This is a positive compliance factor."
+                    ),
+                    Map.of(
+                        "factor", "Sinai failure class events",
+                        "value", events30d + " overfill events (30 days)",
+                        "exposureImplication", "Each overfill event is a potential Sinai-class incident. Sentinel's documented automated response at each event is the primary mitigation for liability exposure at these events."
+                    )
+                ));
+                report.put("mitigatingFactors", List.of(
+                    "Sentinel provides continuous automated monitoring — documented proof that KPC is not relying solely on manual inspection",
+                    "Automated valve closures at each overfill event are timestamped and auditable — demonstrates active intervention",
+                    "CAPA system records corrective action commitments with due dates — demonstrates governance intent",
+                    "Full digital audit trail from detection to response — supports due diligence defence"
+                ));
+                report.put("legalTeamActions", List.of(
+                    "Review all open CAPAs at site-003 and site-006 — close or formally escalate each one",
+                    "Ensure Sentinel incident logs are preserved and backed up — these are litigation-relevant records",
+                    "Confirm regulatory notification obligations have been met for any confirmed releases",
+                    "Review insurance coverage against KES 3.02B precedent award level",
+                    "Legal counsel should review this memo and the underlying Sentinel data before any regulatory submission"
+                ));
+            }
         }
 
         return report;
@@ -634,7 +906,8 @@ public class AiChatController {
         RestTemplate restTemplate = new RestTemplate(factory);
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", groqModel);
+        // Use the 70b model for structured report generation, 8b-instant for fast conversational answers
+        body.put("model", jsonMode ? REPORT_MODEL : groqModel);
         body.put("messages", List.of(
             Map.of("role", "system", "content", systemPrompt),
             Map.of("role", "user",   "content", userMessage)
@@ -813,4 +1086,5 @@ public class AiChatController {
     // ── DTO ───────────────────────────────────────────────────────────────────
 
     public record ChatRequest(String question) {}
+    public record LanguageRequest(String language) {}
 }

@@ -82,7 +82,7 @@ function newPage(s: State) {
   s.doc.line(MARGIN, 10, PAGE_W - MARGIN, 10);
   s.doc.setFontSize(7);
   s.doc.setTextColor(...COLORS.light);
-  s.doc.text("SENTINEL AI — HSE INCIDENT & SUSTAINABILITY IMPACT REPORT  |  CONFIDENTIAL DRAFT", MARGIN, 8);
+  s.doc.text("SENTINEL AI - HSE INCIDENT & SUSTAINABILITY IMPACT REPORT  |  CONFIDENTIAL DRAFT", MARGIN, 8);
 }
 
 function checkY(s: State, needed = 12) {
@@ -94,43 +94,59 @@ function gap(s: State, mm = 4) {
 }
 
 // ── Typography helpers ────────────────────────────────────────────────────────
+// All helpers explicitly set font size + style + color before rendering.
+// This prevents font state bleeding between sections.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function h1(s: State, text: string) {
   checkY(s, 14);
-  s.doc.setFontSize(18);
+  s.doc.setFontSize(13);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.dark);
-  s.doc.text(text, MARGIN, s.y);
-  s.y += 8;
+  const lines: string[] = s.doc.splitTextToSize(text, CONTENT);
+  lines.forEach((l: string, i: number) => {
+    s.doc.text(l, MARGIN, s.y + i * 6);
+  });
+  s.y += lines.length * 6 + 2;
 }
 
 function h2(s: State, text: string, color = COLORS.dark) {
-  checkY(s, 12);
-  s.doc.setFontSize(12);
+  checkY(s, 10);
+  s.doc.setFontSize(10);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...color);
-  s.doc.text(text, MARGIN, s.y);
-  s.y += 6;
+  const lines: string[] = s.doc.splitTextToSize(text, CONTENT);
+  lines.forEach((l: string, i: number) => {
+    s.doc.text(l, MARGIN, s.y + i * 5.5);
+  });
+  s.y += lines.length * 5.5 + 2;
 }
 
 function h3(s: State, text: string, color = COLORS.mid) {
   checkY(s, 8);
-  s.doc.setFontSize(9);
+  s.doc.setFontSize(8);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...color);
-  s.doc.text(text.toUpperCase(), MARGIN, s.y);
-  s.y += 5;
+  const lines: string[] = s.doc.splitTextToSize(text.toUpperCase(), CONTENT);
+  lines.forEach((l: string, i: number) => {
+    s.doc.text(l, MARGIN, s.y + i * 4.5);
+  });
+  s.y += lines.length * 4.5 + 2;
 }
 
 function body(s: State, text: string, indent = 0, color = COLORS.mid) {
   if (!text || text === "null" || text === "undefined") return;
+  // Always reset to base body style
   s.doc.setFontSize(9);
   s.doc.setFont("helvetica", "normal");
   s.doc.setTextColor(...color);
-  const lines: string[] = s.doc.splitTextToSize(text, CONTENT - indent);
+  const maxW = CONTENT - indent;
+  const lines: string[] = s.doc.splitTextToSize(text, maxW);
   for (const line of lines) {
     checkY(s, 5);
+    s.doc.setFontSize(9);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setTextColor(...color);
     s.doc.text(line, MARGIN + indent, s.y);
     s.y += 4.5;
   }
@@ -138,43 +154,51 @@ function body(s: State, text: string, indent = 0, color = COLORS.mid) {
 
 function bullet(s: State, text: string, indent = 4, dotColor = COLORS.violet) {
   if (!text) return;
-  checkY(s, 5);
-  s.doc.setFillColor(...dotColor);
-  s.doc.circle(MARGIN + indent, s.y - 1.2, 0.8, "F");
   s.doc.setFontSize(9);
   s.doc.setFont("helvetica", "normal");
   s.doc.setTextColor(...COLORS.mid);
-  const lines: string[] = s.doc.splitTextToSize(text, CONTENT - indent - 4);
+  const maxW = CONTENT - indent - 5;
+  const lines: string[] = s.doc.splitTextToSize(text, maxW);
   for (let i = 0; i < lines.length; i++) {
     checkY(s, 5);
+    if (i === 0) {
+      s.doc.setFillColor(...dotColor);
+      s.doc.circle(MARGIN + indent, s.y - 1.2, 0.8, "F");
+    }
+    s.doc.setFontSize(9);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setTextColor(...COLORS.mid);
     s.doc.text(lines[i], MARGIN + indent + 3, s.y);
     s.y += 4.5;
   }
 }
 
 function kv(s: State, label: string, value: unknown, indent = 0) {
-  const val = String(value ?? "—");
-  if (val === "null" || val === "undefined" || val === "") return;
+  const val = String(value ?? "-");
+  if (val === "null" || val === "undefined" || val === "" || val === "-") return;
   checkY(s, 5);
-  s.doc.setFontSize(9);
+  // Fixed label column width (40mm) so values always start at the same x
+  const labelColW = 42;
+  s.doc.setFontSize(8.5);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.dark);
-  s.doc.text(label + ":", MARGIN + indent, s.y);
+  const labelLines: string[] = s.doc.splitTextToSize(label + ":", labelColW - 2);
+  s.doc.text(labelLines[0], MARGIN + indent, s.y);
   s.doc.setFont("helvetica", "normal");
   s.doc.setTextColor(...COLORS.mid);
-  const labelW = s.doc.getTextWidth(label + ":") + 2;
-  const availW = CONTENT - indent - labelW;
-  const lines: string[] = s.doc.splitTextToSize(val, availW);
-  s.doc.text(lines[0], MARGIN + indent + labelW, s.y);
-  s.y += 4.5;
-  for (let i = 1; i < lines.length; i++) {
+  const availW = CONTENT - indent - labelColW;
+  const valLines: string[] = s.doc.splitTextToSize(val, availW);
+  valLines.forEach((vl: string, vi: number) => {
     checkY(s, 5);
-    s.doc.text(lines[i], MARGIN + indent + labelW, s.y);
-    s.y += 4.5;
-  }
+    s.doc.setFontSize(8.5);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setTextColor(...COLORS.mid);
+    s.doc.text(vl, MARGIN + indent + labelColW, s.y + vi * 4.5);
+  });
+  s.y += Math.max(labelLines.length, valLines.length) * 4.5;
 }
 
-// ── Section header with coloured left bar ─────────────────────────────────────
+// ── Section header with coloured left bar + number badge ──────────────────────
 
 function sectionHeader(
   s: State,
@@ -182,58 +206,135 @@ function sectionHeader(
   title: string,
   color = COLORS.violet
 ) {
-  checkY(s, 18);
+  checkY(s, 20);
   gap(s, 6);
-  // Left accent bar
+  // Filled circle badge with number
   s.doc.setFillColor(...color);
-  s.doc.rect(MARGIN, s.y - 5, 3, 10, "F");
-  // Section number
-  s.doc.setFontSize(8);
+  s.doc.circle(MARGIN + 4, s.y - 1, 4.5, "F");
+  s.doc.setFontSize(7);
   s.doc.setFont("helvetica", "bold");
-  s.doc.setTextColor(...color);
-  s.doc.text(number, MARGIN + 5, s.y - 1);
-  // Title
-  s.doc.setFontSize(13);
+  s.doc.setTextColor(...COLORS.white);
+  // Center the number text in the circle
+  const numW = s.doc.getTextWidth(number);
+  s.doc.text(number, MARGIN + 4 - numW / 2, s.y + 0.8);
+  // Title — wrap if needed, max width is content minus badge space
+  s.doc.setFontSize(12);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.dark);
-  s.doc.text(title, MARGIN + 5 + s.doc.getTextWidth(number) + 2, s.y - 1);
-  s.y += 6;
-  // Divider
+  const titleW = CONTENT - 14;
+  const titleLines2: string[] = s.doc.splitTextToSize(title, titleW);
+  titleLines2.forEach((tl: string, ti: number) => {
+    s.doc.text(tl, MARGIN + 11, s.y - 1 + ti * 5.5);
+  });
+  s.y += Math.max(6, (titleLines2.length - 1) * 5.5 + 6);
+  // Full-width divider with colour fade — left portion colored, rest grey
+  s.doc.setDrawColor(...color);
+  s.doc.setLineWidth(0.6);
+  s.doc.line(MARGIN, s.y, MARGIN + 40, s.y);
   s.doc.setDrawColor(...COLORS.border);
   s.doc.setLineWidth(0.3);
-  s.doc.line(MARGIN, s.y, PAGE_W - MARGIN, s.y);
-  s.y += 4;
+  s.doc.line(MARGIN + 40, s.y, PAGE_W - MARGIN, s.y);
+  s.y += 5;
 }
 
 // ── Coloured info box ──────────────────────────────────────────────────────────
 
+// Draws a small filled circle icon left of the label
+function drawBoxIcon(s: State, type: "info" | "warning" | "check" | "alert", x: number, y: number) {
+  const r = 2.2;
+  if (type === "warning") {
+    s.doc.setFillColor(...COLORS.amber);
+    // Triangle-ish: draw filled rect as a simple diamond indicator
+    s.doc.setDrawColor(...COLORS.amber);
+    s.doc.setLineWidth(0.6);
+    s.doc.line(x, y - r, x - r, y + r);
+    s.doc.line(x - r, y + r, x + r, y + r);
+    s.doc.line(x + r, y + r, x, y - r);
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(7);
+    s.doc.setTextColor(...COLORS.amber);
+    s.doc.text("!", x - 0.5, y + r - 0.5);
+  } else if (type === "info") {
+    s.doc.setFillColor(...COLORS.blue);
+    s.doc.circle(x, y, r, "F");
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(7);
+    s.doc.setTextColor(...COLORS.white);
+    s.doc.text("i", x - 1, y + 1);
+  } else if (type === "check") {
+    s.doc.setFillColor(...COLORS.green);
+    s.doc.circle(x, y, r, "F");
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(7);
+    s.doc.setTextColor(...COLORS.white);
+    s.doc.text("v", x - 1.2, y + 1);
+  } else {
+    s.doc.setFillColor(...COLORS.red);
+    s.doc.circle(x, y, r, "F");
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(7);
+    s.doc.setTextColor(...COLORS.white);
+    s.doc.text("!", x - 0.5, y + 1);
+  }
+}
+
 function infoBox(
   s: State,
+  label: string,
   text: string,
   bgColor = COLORS.violetLight,
-  textColor = COLORS.violet
+  textColor = COLORS.violet,
+  iconType: "info" | "warning" | "check" | "alert" = "info"
 ) {
   if (!text) return;
-  checkY(s, 14);
-  const lines: string[] = s.doc.splitTextToSize(text, CONTENT - 8);
-  const boxH = lines.length * 4.5 + 6;
+  // textW: full content width minus left icon zone (14mm) minus right padding (6mm)
+  const textW = CONTENT - 20;
+  s.doc.setFontSize(8.5);
+  s.doc.setFont("helvetica", "normal");
+  const lines: string[] = s.doc.splitTextToSize(String(text), textW);
+  const labelH = label ? 6 : 0;
+  // Line height 4.5 + top padding 4 + label height + bottom padding 4
+  const boxH = lines.length * 4.5 + labelH + 8;
+  checkY(s, boxH + 4);
+  // Background
   s.doc.setFillColor(...bgColor);
   s.doc.roundedRect(MARGIN, s.y, CONTENT, boxH, 2, 2, "F");
-  s.doc.setFontSize(9);
+  // Left accent stripe
+  s.doc.setFillColor(...textColor);
+  s.doc.rect(MARGIN, s.y, 2.5, boxH, "F");
+  // Icon at top-left of box
+  drawBoxIcon(s, iconType, MARGIN + 7.5, s.y + 6);
+  // Label (bold, same color as accent)
+  if (label) {
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(8);
+    s.doc.setTextColor(...textColor);
+    s.doc.text(label, MARGIN + 13, s.y + 6);
+  }
+  // Body text — always 8.5pt normal, textColor
   s.doc.setFont("helvetica", "normal");
+  s.doc.setFontSize(8.5);
   s.doc.setTextColor(...textColor);
   lines.forEach((line: string, i: number) => {
-    s.doc.text(line, MARGIN + 4, s.y + 5 + i * 4.5);
+    s.doc.text(line, MARGIN + 13, s.y + 4 + labelH + i * 4.5);
   });
   s.y += boxH + 3;
 }
 
 function warningBox(s: State, text: string) {
-  infoBox(s, "⚠  " + text, COLORS.amberLight, COLORS.amber);
+  infoBox(s, "WARNING", text, COLORS.amberLight, COLORS.amber, "warning");
 }
 
 function disclaimerBox(s: State, text: string) {
-  infoBox(s, "ⓘ  " + text, COLORS.blueLight, COLORS.blue);
+  infoBox(s, "NOTE", text, COLORS.blueLight, COLORS.blue, "info");
+}
+
+function successBox(s: State, text: string) {
+  infoBox(s, "VERIFIED", text, COLORS.greenLight, COLORS.green, "check");
+}
+
+function alertBox(s: State, text: string) {
+  infoBox(s, "ALERT", text, COLORS.redLight, COLORS.red, "alert");
 }
 
 // ── Subsection card ───────────────────────────────────────────────────────────
@@ -245,22 +346,26 @@ function subCard(
   accentColor = COLORS.violet
 ) {
   if (!content) return;
-  checkY(s, 16);
-  const lines: string[] = s.doc.splitTextToSize(content, CONTENT - 10);
-  const cardH = lines.length * 4.5 + 10;
+  // textW: content width minus left accent (2.5mm) minus left padding (5mm) minus right padding (5mm)
+  const textW = CONTENT - 12;
+  s.doc.setFontSize(8.5);
+  s.doc.setFont("helvetica", "normal");
+  const lines: string[] = s.doc.splitTextToSize(content, textW);
+  const cardH = lines.length * 4.5 + 14;
+  checkY(s, cardH + 4);
   s.doc.setFillColor(...COLORS.surface);
   s.doc.roundedRect(MARGIN, s.y, CONTENT, cardH, 2, 2, "F");
   s.doc.setFillColor(...accentColor);
   s.doc.rect(MARGIN, s.y, 2.5, cardH, "F");
-  s.doc.setFontSize(8);
+  s.doc.setFontSize(7.5);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...accentColor);
-  s.doc.text(title.toUpperCase(), MARGIN + 5, s.y + 5);
-  s.doc.setFontSize(9);
+  s.doc.text(title.toUpperCase(), MARGIN + 5, s.y + 6);
+  s.doc.setFontSize(8.5);
   s.doc.setFont("helvetica", "normal");
   s.doc.setTextColor(...COLORS.mid);
   lines.forEach((line: string, i: number) => {
-    s.doc.text(line, MARGIN + 5, s.y + 10 + i * 4.5);
+    s.doc.text(line, MARGIN + 5, s.y + 12 + i * 4.5);
   });
   s.y += cardH + 3;
 }
@@ -296,11 +401,19 @@ function capaTable(s: State, capas: Record<string, unknown>[]) {
     const action   = String(capa.action   ?? capa.action   ?? "");
     const priority = String(capa.priority ?? "");
     const role     = String(capa.responsibleRole ?? capa.role ?? "");
-    const deadline = capa.suggestedDeadlineDays ? `${capa.suggestedDeadlineDays}d` : "—";
+    const deadline = capa.suggestedDeadlineDays ? `${capa.suggestedDeadlineDays}d` : "-";
     const verify   = String(capa.verificationMethod ?? capa.verification ?? "");
 
     const actionLines: string[] = s.doc.splitTextToSize(action, cols[0].w - 3);
-    const rowH = Math.max(actionLines.length * 4 + 4, 8);
+    const vLines: string[] = s.doc.splitTextToSize(verify, cols[4].w - 2);
+    const roleLines: string[] = s.doc.splitTextToSize(role, cols[2].w - 2);
+    // Row height driven by whichever column wraps the most
+    const rowH = Math.max(
+      actionLines.length * 4 + 4,
+      vLines.length * 4 + 4,
+      roleLines.length * 4 + 4,
+      8
+    );
 
     checkY(s, rowH + 2);
 
@@ -334,13 +447,14 @@ function capaTable(s: State, capas: Record<string, unknown>[]) {
 
     s.doc.setFont("helvetica", "normal");
     s.doc.setTextColor(...COLORS.mid);
-    s.doc.text(role.substring(0, 22), cx, s.y + 5);
+    roleLines.forEach((line: string, li: number) => {
+      s.doc.text(line, cx, s.y + 5 + li * 4);
+    });
     cx += cols[2].w;
 
     s.doc.text(deadline, cx, s.y + 5);
     cx += cols[3].w;
 
-    const vLines: string[] = s.doc.splitTextToSize(verify, cols[4].w - 2);
     vLines.forEach((line: string, li: number) => {
       s.doc.text(line, cx, s.y + 5 + li * 4);
     });
@@ -365,11 +479,11 @@ function esgDataTable(
   checkY(s, 14);
 
   const cols = [
-    { label: "ESG Area",  w: 22 },
-    { label: "Metric",    w: 60 },
-    { label: "Value",     w: 30 },
-    { label: "Source",    w: 30 },
-    { label: "Status",    w: 32 },
+    { label: "ESG Area",  w: 28 },
+    { label: "Metric",    w: 56 },
+    { label: "Value",     w: 28 },
+    { label: "Source",    w: 28 },
+    { label: "Status",    w: 34 },
   ];
 
   s.doc.setFillColor(...COLORS.dark);
@@ -385,50 +499,75 @@ function esgDataTable(
   s.y += 7;
 
   metrics.forEach((m, idx) => {
-    checkY(s, 9);
+    // Pre-calculate line wrapping for all columns that can wrap
+    s.doc.setFontSize(8);
+    const areaLines: string[]   = s.doc.splitTextToSize(m.area   || "", cols[0].w - 2);
+    const metricLines: string[] = s.doc.splitTextToSize(m.metric || "", cols[1].w - 3);
+    const valueLines: string[]  = s.doc.splitTextToSize(m.value  || "", cols[2].w - 2);
+    const rowH = Math.max(
+      areaLines.length * 4 + 3,
+      metricLines.length * 4 + 3,
+      valueLines.length * 4 + 3,
+      7
+    );
+
+    checkY(s, rowH + 2);
     const areaColor =
-      m.area === "Environmental" ? COLORS.green :
-      m.area === "Social"        ? COLORS.blue  :
-                                   COLORS.violet;
+      (m.area || "").startsWith("Environ") ? COLORS.green :
+      m.area === "Social"                  ? COLORS.blue  :
+                                             COLORS.violet;
 
     if (idx % 2 === 0) {
       s.doc.setFillColor(...COLORS.surface);
-      s.doc.rect(MARGIN, s.y, CONTENT, 7, "F");
+      s.doc.rect(MARGIN, s.y, CONTENT, rowH, "F");
     }
 
     s.doc.setFontSize(8);
     cx = MARGIN + 2;
 
+    // Area — multiline, colored bold
     s.doc.setFont("helvetica", "bold");
     s.doc.setTextColor(...areaColor);
-    s.doc.text((m.area || "").substring(0, 12), cx, s.y + 4.8);
+    areaLines.forEach((line: string, li: number) => {
+      s.doc.text(line, cx, s.y + 4.8 + li * 4);
+    });
     cx += cols[0].w;
 
+    // Metric — multiline, no hard cut
     s.doc.setFont("helvetica", "normal");
     s.doc.setTextColor(...COLORS.dark);
-    s.doc.text((m.metric || "").substring(0, 38), cx, s.y + 4.8);
+    metricLines.forEach((line: string, li: number) => {
+      s.doc.text(line, cx, s.y + 4.8 + li * 4);
+    });
     cx += cols[1].w;
 
     s.doc.setTextColor(...COLORS.mid);
-    s.doc.text((m.value  || "").substring(0, 18), cx, s.y + 4.8);
+    valueLines.forEach((line: string, li: number) => {
+      s.doc.text(line, cx, s.y + 4.8 + li * 4);
+    });
     cx += cols[2].w;
 
-    s.doc.text((m.source || "").substring(0, 18), cx, s.y + 4.8);
+    s.doc.text((m.source || "").substring(0, 20), cx, s.y + 4.8);
     cx += cols[3].w;
 
     const statusColor =
-      m.status === "VERIFIED"            ? COLORS.green  :
-      m.status === "CALCULATED"          ? COLORS.blue   :
-      m.status === "PENDING_VERIFICATION"? COLORS.amber  :
-                                           COLORS.light;
+      m.status === "VERIFIED"             ? COLORS.green  :
+      m.status === "CALCULATED"           ? COLORS.blue   :
+      m.status === "PENDING_VERIFICATION" ? COLORS.amber  :
+                                            COLORS.light;
     s.doc.setFont("helvetica", "bold");
     s.doc.setTextColor(...statusColor);
-    s.doc.text((m.status || "").substring(0, 20), cx, s.y + 4.8);
+    // Shorten status display text to fit column
+    const statusDisplay = (m.status || "")
+      .replace("PENDING_VERIFICATION", "PENDING")
+      .replace("CALCULATED", "CALC.")
+      .substring(0, 18);
+    s.doc.text(statusDisplay, cx, s.y + 4.8);
 
     s.doc.setDrawColor(...COLORS.border);
     s.doc.setLineWidth(0.2);
-    s.doc.line(MARGIN, s.y + 7, PAGE_W - MARGIN, s.y + 7);
-    s.y += 7;
+    s.doc.line(MARGIN, s.y + rowH, PAGE_W - MARGIN, s.y + rowH);
+    s.y += rowH;
   });
   s.y += 4;
 }
@@ -459,21 +598,26 @@ function kpiTable(s: State, kpis: Record<string, unknown>[]) {
   s.y += 7;
 
   kpis.forEach((kpi, idx) => {
-    checkY(s, 8);
+    s.doc.setFontSize(8);
+    const kpiLines: string[] = s.doc.splitTextToSize(String(kpi.kpi ?? ""), cols[0].w - 3);
+    const rowH = Math.max(kpiLines.length * 4 + 3, 7);
+    checkY(s, rowH + 2);
     if (idx % 2 === 0) {
       s.doc.setFillColor(...COLORS.surface);
-      s.doc.rect(MARGIN, s.y, CONTENT, 7, "F");
+      s.doc.rect(MARGIN, s.y, CONTENT, rowH, "F");
     }
     s.doc.setFontSize(8);
     cx = MARGIN + 2;
 
     s.doc.setFont("helvetica", "normal");
     s.doc.setTextColor(...COLORS.dark);
-    s.doc.text(String(kpi.kpi ?? "").substring(0, 48), cx, s.y + 4.8);
+    kpiLines.forEach((line: string, li: number) => {
+      s.doc.text(line, cx, s.y + 4.8 + li * 4);
+    });
     cx += cols[0].w;
 
     s.doc.setTextColor(...COLORS.mid);
-    s.doc.text(String(kpi.value ?? "—"), cx, s.y + 4.8);
+    s.doc.text(String(kpi.value ?? "-"), cx, s.y + 4.8);
     cx += cols[1].w;
 
     s.doc.text(String(kpi.period ?? "30d"), cx, s.y + 4.8);
@@ -491,100 +635,277 @@ function kpiTable(s: State, kpis: Record<string, unknown>[]) {
 
     s.doc.setDrawColor(...COLORS.border);
     s.doc.setLineWidth(0.2);
-    s.doc.line(MARGIN, s.y + 7, PAGE_W - MARGIN, s.y + 7);
-    s.y += 7;
+    s.doc.line(MARGIN, s.y + rowH, PAGE_W - MARGIN, s.y + rowH);
+    s.y += rowH;
   });
   s.y += 4;
+}
+
+// ── Risk level badge ──────────────────────────────────────────────────────────
+
+function riskBadge(s: State, level: string, x = MARGIN, y = s.y) {
+  const color =
+    level === "CRITICAL" ? COLORS.red :
+    level === "HIGH"     ? COLORS.orange :
+    level === "MEDIUM"   ? COLORS.amber :
+                           COLORS.green;
+  const w = 28;
+  s.doc.setFillColor(...color);
+  s.doc.roundedRect(x, y - 4, w, 6, 1.5, 1.5, "F");
+  s.doc.setFontSize(7.5);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setTextColor(...COLORS.white);
+  const lw = s.doc.getTextWidth(level);
+  s.doc.text(level, x + (w - lw) / 2, y + 0.2);
 }
 
 // ── Cover page ────────────────────────────────────────────────────────────────
 
 function coverPage(s: State, reportTitle: string, reportType: string, generatedAt: string) {
-  // Dark header band
+  // Full-height dark sidebar (left 55mm) — KPC brand identity
   s.doc.setFillColor(...COLORS.dark);
-  s.doc.rect(0, 0, PAGE_W, 60, "F");
+  s.doc.rect(0, 0, 55, PAGE_H, "F");
 
-  // Violet accent bar
+  // Violet accent stripe on the sidebar
   s.doc.setFillColor(...COLORS.violet);
-  s.doc.rect(0, 58, PAGE_W, 4, "F");
+  s.doc.rect(0, 0, 6, PAGE_H, "F");
 
-  // Logo area text
-  s.doc.setFontSize(10);
+  // Sidebar: "KPC" subtle large letters — use dark-on-dark instead of opacity (more reliable)
+  s.doc.setFontSize(48);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setTextColor(42, 38, 68); // slightly lighter than sidebar dark to create depth
+  s.doc.text("KPC", 5, 125, { angle: 90 });
+
+  // Sidebar: SENTINEL branding (top)
+  s.doc.setFontSize(13);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.white);
-  s.doc.text("SENTINEL", MARGIN, 20);
-  s.doc.setFontSize(8);
+  s.doc.text("SENTINEL", 10, 28);
+
+  s.doc.setFontSize(6.5);
   s.doc.setFont("helvetica", "normal");
-  s.doc.setTextColor(180, 180, 200);
-  s.doc.text("AI-Powered Pipeline Safety & ESG Monitoring", MARGIN, 26);
-  s.doc.text("Kenya Pipeline Company", MARGIN, 31);
+  s.doc.setTextColor(160, 160, 200);
+  s.doc.text("AI PIPELINE SAFETY", 10, 34);
+  s.doc.text("& ESG MONITORING", 10, 39);
 
-  // Report type badge
+  // Sidebar: KPC label (bottom)
+  s.doc.setFontSize(7);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setTextColor(...COLORS.violet);
+  s.doc.text("KENYA PIPELINE", 10, PAGE_H - 30);
+  s.doc.text("COMPANY", 10, PAGE_H - 25);
+  s.doc.setFontSize(6);
+  s.doc.setFont("helvetica", "normal");
+  s.doc.setTextColor(120, 120, 160);
+  s.doc.text("KPC | Sentinel AI", 10, PAGE_H - 19);
+
+  // Right content area starts at x=65
+  const RX = 65; // right zone left edge
+  const RW = PAGE_W - RX - MARGIN; // right zone width
+
+  // Top accent bar (right side only)
   s.doc.setFillColor(...COLORS.violet);
-  s.doc.roundedRect(MARGIN, 38, 60, 9, 2, 2, "F");
-  s.doc.setFontSize(8);
+  s.doc.rect(55, 0, PAGE_W - 55, 3, "F");
+
+  // Report type badge (top right)
+  const badgeW = Math.min(RW, 75);
+  s.doc.setFillColor(...COLORS.violet);
+  s.doc.roundedRect(RX, 12, badgeW, 8, 2, 2, "F");
+  s.doc.setFontSize(7.5);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.white);
-  s.doc.text(reportType, MARGIN + 4, 43.5);
+  s.doc.text(reportType.toUpperCase(), RX + 4, 17.5);
 
-  // Report title (large)
-  s.doc.setFontSize(22);
+  // CONFIDENTIAL DRAFT badge (beside report type)
+  s.doc.setFillColor(...COLORS.amberLight);
+  s.doc.roundedRect(RX + badgeW + 3, 12, 35, 8, 2, 2, "F");
+  s.doc.setFontSize(6.5);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setTextColor(...COLORS.amber);
+  s.doc.text("CONFIDENTIAL DRAFT", RX + badgeW + 5, 17.5);
+
+  // Report title — large, dark, left-aligned to right zone
+  s.doc.setFontSize(15);
   s.doc.setFont("helvetica", "bold");
   s.doc.setTextColor(...COLORS.dark);
-  const titleLines: string[] = s.doc.splitTextToSize(reportTitle, CONTENT);
+  const titleLines: string[] = s.doc.splitTextToSize(reportTitle, RW);
+  let ty = 38;
   titleLines.forEach((line: string, i: number) => {
-    s.doc.text(line, MARGIN, 82 + i * 12);
+    s.doc.text(line, RX, ty + i * 8);
   });
-  s.y = 82 + titleLines.length * 12 + 6;
+  let metaY = ty + titleLines.length * 8 + 4;
 
-  // Divider
-  s.doc.setDrawColor(...COLORS.violet);
-  s.doc.setLineWidth(0.8);
-  s.doc.line(MARGIN, s.y, MARGIN + 40, s.y);
-  s.y += 8;
+  // Coloured divider under title
+  s.doc.setFillColor(...COLORS.violet);
+  s.doc.rect(RX, metaY, 35, 1.5, "F");
+  s.doc.setFillColor(...COLORS.border);
+  s.doc.rect(RX + 35, metaY, RW - 35, 0.5, "F");
+  metaY += 6;
 
-  // Metadata
-  const meta = [
-    ["Report Type",   reportType],
-    ["Generated",     generatedAt],
-    ["System",        "Sentinel AI HSE Reporting Agent"],
-    ["Status",        "DRAFT — Requires HSE Professional Review"],
-    ["Classification","Confidential"],
+  // Metadata grid
+  const meta: [string, string, [number,number,number]][] = [
+    ["Report Type",    reportType,                              COLORS.violet],
+    ["Generated",      generatedAt,                            COLORS.mid],
+    ["System",         "Sentinel AI HSE Reporting Agent",      COLORS.mid],
+    ["Status",         "DRAFT - Requires HSE Professional Review", COLORS.amber],
+    ["Classification", "Confidential",                         COLORS.red],
   ];
-  meta.forEach(([label, value]) => {
-    s.doc.setFontSize(9);
+  meta.forEach(([label, value, valColor]) => {
+    s.doc.setFontSize(7.5);
     s.doc.setFont("helvetica", "bold");
     s.doc.setTextColor(...COLORS.dark);
-    s.doc.text(label + ":", MARGIN, s.y);
+    s.doc.text(label + ":", RX, metaY);
     s.doc.setFont("helvetica", "normal");
-    s.doc.setTextColor(...COLORS.mid);
-    s.doc.text(value, MARGIN + 35, s.y);
-    s.y += 6;
+    s.doc.setTextColor(...valColor);
+    const valLines: string[] = s.doc.splitTextToSize(value, RW - 32);
+    s.doc.text(valLines[0], RX + 32, metaY);
+    metaY += 5.5;
   });
+  metaY += 6;
 
-  s.y += 8;
+  // Update state y for boxes below
+  s.y = metaY;
 
-  // AI disclaimer box
-  disclaimerBox(s,
+  // AI disclaimer box (right zone only — reuse infoBox but positioned manually)
+  s.doc.setFontSize(8);
+  s.doc.setFont("helvetica", "normal");
+  const disclaimText =
     "This report was generated by Sentinel AI using live operational data. " +
     "It is a DRAFT for HSE professional review. Root cause analysis, environmental impact, " +
-    "legal liability, injury/fatality confirmation, and community impact require human verification " +
-    "before this report may be used externally or submitted to regulators."
-  );
+    "legal liability, injury/fatality confirmation, and community impact require human " +
+    "verification before this report may be used externally or submitted to regulators.";
+  const disclaimLines: string[] = s.doc.splitTextToSize(disclaimText, RW - 8);
+  const disclaimH = disclaimLines.length * 4 + 8;
+  s.doc.setFillColor(...COLORS.blueLight);
+  s.doc.roundedRect(RX, s.y, RW, disclaimH, 2, 2, "F");
+  s.doc.setFillColor(...COLORS.blue);
+  s.doc.rect(RX, s.y, 2.5, disclaimH, "F");
+  drawBoxIcon(s, "info", RX + 7, s.y + 5);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setFontSize(7.5);
+  s.doc.setTextColor(...COLORS.blue);
+  s.doc.text("NOTE", RX + 12, s.y + 5);
+  s.doc.setFont("helvetica", "normal");
+  s.doc.setFontSize(8);
+  disclaimLines.forEach((line: string, i: number) => {
+    s.doc.text(line, RX + 12, s.y + 10 + i * 4);
+  });
+  s.y += disclaimH + 5;
 
-  // Sinai/Thange context
-  s.y += 4;
-  warningBox(s,
+  // Sinai/Thange context warning box (right zone)
+  const warnText =
     "CONTEXT: The 2011 Nairobi Sinai pipeline fire (~100 lives) and the 2015 Thange River spill " +
-    "(Kimeu & 3,074 others v. KPC, [2025] KEELC 5239 — KES 3.02 billion) both originated as " +
+    "(Kimeu & 3,074 others v. KPC, [2025] KEELC 5239 - KES 3.02 billion) both originated as " +
     "undetected valve/tank failures. Sentinel continuously monitors 7 KPC pipeline sites to close " +
-    "exactly this gap. This report documents one such monitored event."
-  );
+    "exactly this gap. This report documents one such monitored event.";
+  const warnLines: string[] = s.doc.splitTextToSize(warnText, RW - 8);
+  const warnH = warnLines.length * 4 + 8;
+  if (s.y + warnH < PAGE_H - 20) {
+    s.doc.setFillColor(...COLORS.amberLight);
+    s.doc.roundedRect(RX, s.y, RW, warnH, 2, 2, "F");
+    s.doc.setFillColor(...COLORS.amber);
+    s.doc.rect(RX, s.y, 2.5, warnH, "F");
+    drawBoxIcon(s, "warning", RX + 7, s.y + 5);
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setFontSize(7.5);
+    s.doc.setTextColor(...COLORS.amber);
+    s.doc.text("WARNING", RX + 12, s.y + 5);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setFontSize(8);
+    warnLines.forEach((line: string, i: number) => {
+      s.doc.text(line, RX + 12, s.y + 10 + i * 4);
+    });
+  }
+  // Note: page numbers are added by the post-render footer loop — don't add here
+}
 
-  // Page number footer
-  s.doc.setFontSize(7);
+// ── Table of contents ─────────────────────────────────────────────────────────
+
+function tableOfContents(s: State, report: Record<string, unknown>) {
+  newPage(s);
+
+  // TOC header
+  s.doc.setFillColor(...COLORS.dark);
+  s.doc.rect(0, 0, PAGE_W, 18, "F");
+  s.doc.setFillColor(...COLORS.violet);
+  s.doc.rect(0, 0, 6, 18, "F");
+  s.doc.setFontSize(11);
+  s.doc.setFont("helvetica", "bold");
+  s.doc.setTextColor(...COLORS.white);
+  s.doc.text("TABLE OF CONTENTS", MARGIN, 12);
+
+  s.y = 28;
+
+  const sections = [
+    { num: "01", title: "Executive Summary",                    color: COLORS.red    },
+    { num: "02", title: "Incident Overview",                    color: COLORS.orange },
+    { num: "03", title: "What Happened - Incident Narrative",   color: COLORS.blue   },
+    { num: "04", title: "HSE Risk Assessment",                  color: COLORS.amber  },
+    { num: "05", title: "Incident Timeline",                    color: COLORS.blue,
+      note: report.timeline ? "" : "Derived from event data" },
+    { num: "06", title: "Root Cause Analysis",                  color: COLORS.violet },
+    { num: "07", title: "Corrective & Preventive Actions (CAPA)", color: COLORS.violet },
+    { num: "08", title: "Environmental Impact Assessment",      color: COLORS.green  },
+    { num: "09", title: "Community & Social Impact",            color: COLORS.blue   },
+    { num: "10", title: "HSE KPIs",                             color: COLORS.violet },
+    { num: "11", title: "ESG Connection",                       color: COLORS.violet },
+    { num: "12", title: "ESG Reporting Data Table",             color: COLORS.dark   },
+    { num: "13", title: "Management Insights",                  color: COLORS.dark   },
+    { num: "14", title: "Early Warning Signals",                color: COLORS.amber  },
+    { num: "15", title: "Reporting Confidence",                 color: COLORS.violet },
+  ];
+
+  sections.forEach((sec, i) => {
+    const rowH = sec.note ? 10 : 7;
+    checkY(s, rowH + 2);
+    const isEven = i % 2 === 0;
+    if (isEven) {
+      s.doc.setFillColor(...COLORS.surface);
+      s.doc.rect(MARGIN, s.y - 3, CONTENT, rowH, "F");
+    }
+
+    // Number badge
+    s.doc.setFillColor(...sec.color);
+    s.doc.circle(MARGIN + 5, s.y + 0.5, 3.5, "F");
+    s.doc.setFontSize(6.5);
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setTextColor(...COLORS.white);
+    const nw = s.doc.getTextWidth(sec.num);
+    s.doc.text(sec.num, MARGIN + 5 - nw / 2, s.y + 1.3);
+
+    // Title — truncate to fit before the dotted line
+    const maxTitleW = CONTENT - 30;
+    s.doc.setFontSize(9);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setTextColor(...COLORS.dark);
+    const titleLines = s.doc.splitTextToSize(sec.title, maxTitleW);
+    s.doc.text(titleLines[0], MARGIN + 12, s.y + 1);
+
+    // Note on second line (never same line as title)
+    if (sec.note) {
+      s.doc.setFontSize(7);
+      s.doc.setFont("helvetica", "normal");
+      s.doc.setTextColor(...COLORS.light);
+      s.doc.text(`(${sec.note})`, MARGIN + 13, s.y + 5.5);
+    }
+
+    // Dotted leader line — to the right of the title on the title line
+    const titleEndX = MARGIN + 12 + s.doc.getTextWidth(titleLines[0]) + 2;
+    s.doc.setDrawColor(...COLORS.border);
+    s.doc.setLineWidth(0.2);
+    s.doc.setLineDashPattern([0.5, 1], 0);
+    s.doc.line(titleEndX, s.y + 0.5, PAGE_W - MARGIN - 8, s.y + 0.5);
+    s.doc.setLineDashPattern([], 0);
+
+    s.y += rowH;
+  });
+
+  // Note at bottom
+  s.y += 6;
+  s.doc.setFontSize(7.5);
+  s.doc.setFont("helvetica", "normal");
   s.doc.setTextColor(...COLORS.light);
-  s.doc.text(`Page ${s.page}`, PAGE_W - MARGIN - 8, PAGE_H - 8);
+  s.doc.text("AI-generated report - DRAFT status. HSE professional review required before external use.", MARGIN, s.y);
 }
 
 // ── Main export function ───────────────────────────────────────────────────────
@@ -606,7 +927,10 @@ export async function downloadHseReportPdf(
   // ── COVER PAGE ─────────────────────────────────────────────────────────────
   coverPage(s, reportTitle, reportType.replace("_", " ").toUpperCase(), generatedAt);
 
-  // ── New page for content ───────────────────────────────────────────────────
+  // ── TABLE OF CONTENTS ──────────────────────────────────────────────────────
+  tableOfContents(s, report);
+
+  // ── Content starts on a new page after ToC ────────────────────────────────
   newPage(s);
 
   // ══════════════════════════════════════════════════════════════════
@@ -616,7 +940,7 @@ export async function downloadHseReportPdf(
 
   const exec = report.executiveSummary ?? {};
   const headline = report.headline ?? exec.headline ?? exec.whatHappened ?? "";
-  if (headline) infoBox(s, String(headline), COLORS.blueLight, COLORS.blue);
+  if (headline) infoBox(s, "", String(headline), COLORS.blueLight, COLORS.blue, "info");
 
   if (exec.whatHappened) {
     h3(s, "What Happened");
@@ -629,12 +953,12 @@ export async function downloadHseReportPdf(
   }
 
   const execGrid = [
-    ["Severity",              exec.severity       ?? report.riskAssessment?.overallRisk ?? "—"],
-    ["Immediate Risk",        exec.immediateRisk   ?? "—"],
-    ["Environmental Impact",  exec.environmentalImpactOccurred === true ? "Confirmed — requires field verification" : "No confirmed release"],
-    ["Sentinel Response",     exec.sentinelResponse ?? "—"],
-    ["Response Time",         exec.responseTimeSeconds ? `${exec.responseTimeSeconds}s` : "—"],
-    ["Current Status",        exec.currentStatus   ?? "—"],
+    ["Severity",              exec.severity       ?? report.riskAssessment?.overallRisk ?? "-"],
+    ["Immediate Risk",        exec.immediateRisk   ?? "-"],
+    ["Environmental Impact",  exec.environmentalImpactOccurred === true ? "Confirmed - requires field verification" : "No confirmed release"],
+    ["Sentinel Response",     exec.sentinelResponse ?? "-"],
+    ["Response Time",         exec.responseTimeSeconds ? `${exec.responseTimeSeconds}s` : "-"],
+    ["Current Status",        exec.currentStatus   ?? "-"],
   ];
   execGrid.forEach(([label, value]) => kv(s, label, value, 2));
   gap(s);
@@ -653,11 +977,11 @@ export async function downloadHseReportPdf(
 
   const inc = report.incidentOverview ?? {};
   const incFields: [string, unknown][] = [
-    ["Total Events (30d)",         inc.totalEvents30d      ?? "—"],
-    ["Overfill Events (30d)",      inc.overfillEvents30d   ?? "—"],
-    ["High-Risk Site Events",      inc.highRiskSiteEvents  ?? "—"],
-    ["Critical Events",            inc.criticalEvents      ?? "—"],
-    ["System Status",              inc.status              ?? "—"],
+    ["Total Events (30d)",         inc.totalEvents30d      ?? "-"],
+    ["Overfill Events (30d)",      inc.overfillEvents30d   ?? "-"],
+    ["High-Risk Site Events",      inc.highRiskSiteEvents  ?? "-"],
+    ["Critical Events",            inc.criticalEvents      ?? "-"],
+    ["System Status",              inc.status              ?? "-"],
     ["Period",                     report.period           ?? "Last 30 days"],
   ];
   incFields.forEach(([l, v]) => kv(s, l, v, 2));
@@ -666,7 +990,7 @@ export async function downloadHseReportPdf(
   // ══════════════════════════════════════════════════════════════════
   // SECTION 3: WHAT HAPPENED — NARRATIVE
   // ══════════════════════════════════════════════════════════════════
-  sectionHeader(s, "03", "What Happened — Incident Narrative", COLORS.blue);
+  sectionHeader(s, "03", "What Happened - Incident Narrative", COLORS.blue);
 
   const narrative = report.narrative ?? {};
   const narFields = [
@@ -698,25 +1022,22 @@ export async function downloadHseReportPdf(
   const risk = report.riskAssessment ?? report.hseRiskAssessment ?? {};
 
   if (risk.overallRisk) {
-    checkY(s, 10);
-    const riskColor =
-      risk.overallRisk === "CRITICAL" ? COLORS.red :
-      risk.overallRisk === "HIGH"     ? COLORS.orange :
-      risk.overallRisk === "MEDIUM"   ? COLORS.amber : COLORS.green;
-    s.doc.setFontSize(11);
+    checkY(s, 12);
+    s.doc.setFontSize(9);
     s.doc.setFont("helvetica", "bold");
-    s.doc.setTextColor(...riskColor);
-    s.doc.text(`Overall Risk Level: ${risk.overallRisk}`, MARGIN, s.y);
-    s.y += 7;
+    s.doc.setTextColor(...COLORS.dark);
+    s.doc.text("Overall Risk Level:", MARGIN, s.y);
+    riskBadge(s, String(risk.overallRisk), MARGIN + 38, s.y);
+    s.y += 9;
   }
 
   const riskAreas = [
-    { label: "🦺  Health & Safety", key: "healthSafety",       color: COLORS.orange },
-    { label: "🌿  Environmental",   key: "environmental",      color: COLORS.green  },
-    { label: "👥  Community",       key: "community",          color: COLORS.blue   },
-    { label: "⚙️  Operational",     key: "operational",        color: COLORS.mid    },
-    { label: "⚖️  Legal & Compliance", key: "legalAndCompliance", color: COLORS.violet },
-    { label: "⚖️  Legal & Compliance", key: "legalCompliance", color: COLORS.violet },
+    { label: "HEALTH & SAFETY",     key: "healthSafety",       color: COLORS.orange },
+    { label: "ENVIRONMENTAL",       key: "environmental",      color: COLORS.green  },
+    { label: "COMMUNITY",           key: "community",          color: COLORS.blue   },
+    { label: "OPERATIONAL",         key: "operational",        color: COLORS.mid    },
+    { label: "LEGAL & COMPLIANCE",  key: "legalAndCompliance", color: COLORS.violet },
+    { label: "LEGAL & COMPLIANCE",  key: "legalCompliance",    color: COLORS.violet },
   ];
   const seen = new Set<string>();
   riskAreas.forEach(({ label, key, color }) => {
@@ -733,24 +1054,104 @@ export async function downloadHseReportPdf(
   }
 
   // ══════════════════════════════════════════════════════════════════
-  // SECTION 5: INCIDENT TIMELINE (if present)
+  // SECTION 5: INCIDENT TIMELINE
   // ══════════════════════════════════════════════════════════════════
-  const timeline = report.timeline ?? report.incidentTimeline;
-  if (timeline && Array.isArray(timeline) && timeline.length > 0) {
-    sectionHeader(s, "05", "Incident Timeline", COLORS.blue);
-    timeline.forEach((entry: Record<string, unknown>) => {
-      checkY(s, 7);
-      s.doc.setFontSize(8);
-      s.doc.setFont("helvetica", "bold");
-      s.doc.setTextColor(...COLORS.violet);
-      s.doc.text(String(entry.time ?? entry.t ?? ""), MARGIN + 2, s.y);
-      s.doc.setFont("helvetica", "normal");
-      s.doc.setTextColor(...COLORS.mid);
-      s.doc.text(String(entry.event ?? entry.description ?? ""), MARGIN + 25, s.y);
-      s.y += 5;
-    });
-    gap(s);
+  sectionHeader(s, "05", "Incident Timeline", COLORS.blue);
+
+  // Use LLM-provided timeline if present, otherwise derive from event data in the report
+  const rawTimeline = report.timeline ?? report.incidentTimeline;
+  type TimelineEntry = { time: string; event: string; type?: "detect" | "response" | "action" | "status" };
+  let timelineEntries: TimelineEntry[] = [];
+
+  if (rawTimeline && Array.isArray(rawTimeline) && rawTimeline.length > 0) {
+    timelineEntries = (rawTimeline as Record<string, unknown>[]).map(e => ({
+      time:  String(e.time ?? e.t ?? ""),
+      event: String(e.event ?? e.description ?? ""),
+      type:  (e.type as TimelineEntry["type"]) ?? "status",
+    }));
+  } else {
+    // Derive timeline from structured report data
+    const exec2    = (report.executiveSummary ?? {}) as Record<string, unknown>;
+    const narrative2 = (report.narrative ?? {}) as Record<string, unknown>;
+    const rca2     = (report.rootCauseAnalysis ?? {}) as Record<string, unknown>;
+    const detectedAt = String(report._generatedAt ?? generatedAt ?? "");
+
+    if (exec2.responseTimeSeconds && Number(exec2.responseTimeSeconds) > 0) {
+      const rtSec = Number(exec2.responseTimeSeconds);
+      timelineEntries.push({ time: "T+0s",           event: "Sentinel detected overfill threshold breach via continuous telemetry monitoring.", type: "detect" });
+      timelineEntries.push({ time: `T+${rtSec}s`,    event: exec2.sentinelResponse ? String(exec2.sentinelResponse) : "Automated valve shutdown command issued by Sentinel control plane.", type: "response" });
+      timelineEntries.push({ time: "T+immediate",    event: "Incident recorded with full audit trail. HSE notification issued.", type: "action" });
+    } else {
+      // Build from narrative fields
+      if (narrative2.whatSystemDetected)
+        timelineEntries.push({ time: detectedAt || "Detection", event: String(narrative2.whatSystemDetected), type: "detect" });
+      if (narrative2.whatSentinelDid)
+        timelineEntries.push({ time: "Automated response", event: String(narrative2.whatSentinelDid), type: "response" });
+      if (narrative2.whatHappenedAfterIntervention)
+        timelineEntries.push({ time: "Post-intervention", event: String(narrative2.whatHappenedAfterIntervention), type: "status" });
+    }
+
+    // Add CAPA as next action
+    const capaRecs2 = report.capaRecommendations ?? report.recommendations;
+    if (Array.isArray(capaRecs2) && capaRecs2.length > 0) {
+      const firstCapa = (capaRecs2[0] as Record<string, unknown>);
+      const deadline  = firstCapa.suggestedDeadlineDays ? `Within ${firstCapa.suggestedDeadlineDays}d` : "Pending";
+      timelineEntries.push({ time: deadline, event: String(firstCapa.action ?? "CAPA investigation and corrective action required."), type: "action" });
+    }
+
+    // Root cause investigation
+    if ((rca2.requiresInvestigation as string[] | undefined)?.length) {
+      timelineEntries.push({ time: "Pending investigation", event: "Root cause investigation required - see Section 6.", type: "action" });
+    }
+
+    if (timelineEntries.length === 0) {
+      timelineEntries.push({ time: detectedAt || "Recorded", event: "Incident detected and recorded by Sentinel. Full investigation timeline requires HSE officer input.", type: "status" });
+    }
   }
+
+  // Render timeline as a visual vertical track
+  timelineEntries.forEach((entry, i) => {
+    checkY(s, 12);
+    const dotColor: [number,number,number] =
+      entry.type === "detect"   ? COLORS.red    :
+      entry.type === "response" ? COLORS.green  :
+      entry.type === "action"   ? COLORS.violet :
+                                  COLORS.mid;
+
+    // Vertical connecting line (except last)
+    if (i < timelineEntries.length - 1) {
+      s.doc.setDrawColor(...COLORS.border);
+      s.doc.setLineWidth(0.5);
+      s.doc.line(MARGIN + 5, s.y + 1, MARGIN + 5, s.y + 11);
+    }
+
+    // Circle marker
+    s.doc.setFillColor(...dotColor);
+    s.doc.circle(MARGIN + 5, s.y, 2.5, "F");
+
+    // Time label
+    s.doc.setFontSize(7.5);
+    s.doc.setFont("helvetica", "bold");
+    s.doc.setTextColor(...dotColor);
+    s.doc.text(entry.time, MARGIN + 11, s.y + 1);
+
+    // Event description (wrapping)
+    const eventLines: string[] = s.doc.splitTextToSize(entry.event, CONTENT - 35);
+    s.doc.setFontSize(8.5);
+    s.doc.setFont("helvetica", "normal");
+    s.doc.setTextColor(...COLORS.mid);
+    const timeW = s.doc.getTextWidth(entry.time) + 4;
+    eventLines.forEach((line: string, li: number) => {
+      if (li === 0) {
+        s.doc.text(line, MARGIN + 11 + timeW, s.y + 1);
+      } else {
+        checkY(s, 5);
+        s.doc.text(line, MARGIN + 11, s.y + 4 + li * 4.5);
+      }
+    });
+    s.y += Math.max(eventLines.length * 4.5 + 2, 10);
+  });
+  gap(s);
 
   // ══════════════════════════════════════════════════════════════════
   // SECTION 6: ROOT CAUSE ANALYSIS
@@ -759,9 +1160,9 @@ export async function downloadHseReportPdf(
 
   const rca = report.rootCauseAnalysis ?? {};
   if (rca.disclaimer) {
-    disclaimerBox(s, String(rca.disclaimer));
+    alertBox(s, String(rca.disclaimer));
   } else {
-    disclaimerBox(s,
+    alertBox(s,
       "AI-generated hypothesis only. Does not constitute a confirmed root cause finding. " +
       "Human HSE investigation is required before any official determination."
     );
@@ -774,7 +1175,7 @@ export async function downloadHseReportPdf(
     gap(s);
   }
   if (rca.aiHypotheses?.length) {
-    h3(s, "AI Hypotheses — Requires Investigation", COLORS.blue);
+    h3(s, "AI Hypotheses - Requires Investigation", COLORS.blue);
     (rca.aiHypotheses as string[]).forEach((h: string) => bullet(s, h, 4, COLORS.blue));
     gap(s);
   }
@@ -804,7 +1205,7 @@ export async function downloadHseReportPdf(
   kv(s, "Avg Closure Time",    capaSection.avgClosureDays ?? capaSection.avgClosureTime, 2);
   if (capaSection.governanceNote) {
     gap(s, 2);
-    infoBox(s, String(capaSection.governanceNote), COLORS.violetLight, COLORS.violet);
+    infoBox(s, "NOTE", String(capaSection.governanceNote), COLORS.violetLight, COLORS.violet, "info");
   }
   gap(s, 2);
 
@@ -837,9 +1238,9 @@ export async function downloadHseReportPdf(
     gap(s);
   }
   if (!envText && !esgConn.environmental) {
-    warningBox(s,
-      "Environmental impact assessment requires field verification by an environmental officer. " +
-      "No confirmed release reported at this stage."
+    successBox(s,
+      "No confirmed environmental release reported at this stage. " +
+      "Environmental impact assessment requires field verification by an environmental officer."
     );
     gap(s);
   }
@@ -883,11 +1284,11 @@ export async function downloadHseReportPdf(
     // Build KPI table from automation performance
     const auto = report.automationPerformance ?? {};
     const autoKpis = [
-      { kpi: "Automated valve closures (30d)", value: auto.valveClosures30d ?? "—", period: "30d", trend: "—" },
-      { kpi: "Avg automated response time",    value: auto.avgResponseTimeSec ?? "—", period: "30d", trend: "—" },
-      { kpi: "Automation success rate",        value: auto.successRate ?? "—", period: "30d", trend: "—" },
-      { kpi: "Estimated litres saved",         value: auto.litresSaved ?? "—", period: "30d", trend: "—" },
-    ].filter(k => String(k.value) !== "—");
+      { kpi: "Automated valve closures (30d)", value: auto.valveClosures30d ?? "-", period: "30d", trend: "-" },
+      { kpi: "Avg automated response time",    value: auto.avgResponseTimeSec ?? "-", period: "30d", trend: "-" },
+      { kpi: "Automation success rate",        value: auto.successRate ?? "-", period: "30d", trend: "-" },
+      { kpi: "Estimated litres saved",         value: auto.litresSaved ?? "-", period: "30d", trend: "-" },
+    ].filter(k => String(k.value) !== "-");
     if (autoKpis.length > 0) kpiTable(s, autoKpis);
     else body(s, "KPI data not available for this report type. Generate a Full HSE Report for complete KPIs.", 2, COLORS.light);
   }
@@ -898,9 +1299,9 @@ export async function downloadHseReportPdf(
   sectionHeader(s, "11", "ESG Connection", COLORS.violet);
 
   const pillars = [
-    { key: "environmental", label: "E — Environmental", color: COLORS.green  },
-    { key: "social",        label: "S — Social",        color: COLORS.blue   },
-    { key: "governance",    label: "G — Governance",    color: COLORS.violet },
+    { key: "environmental", label: "E - Environmental", color: COLORS.green  },
+    { key: "social",        label: "S - Social",        color: COLORS.blue   },
+    { key: "governance",    label: "G - Governance",    color: COLORS.violet },
   ];
   pillars.forEach(({ key, label, color }) => {
     const items = (esgConn[key] as string[]) ?? [];
@@ -966,14 +1367,14 @@ export async function downloadHseReportPdf(
     const inc2  = report.incidentOverview ?? {};
     const capa2 = report.capaStatus ?? {};
     const fallbackRows = [
-      { area: "Environmental", metric: "Automated valve closures",       value: String(auto.valveClosures30d ?? "—"),   source: "Sentinel", status: "VERIFIED" },
-      { area: "Environmental", metric: "Litres saved (estimate)",        value: String(auto.litresSaved ?? "—"),        source: "Calculated", status: "ESTIMATED" },
-      { area: "Social",        metric: "Overfill events prevented",      value: String(inc2.overfillEvents30d ?? "—"),  source: "Sentinel", status: "VERIFIED" },
-      { area: "Social",        metric: "High-risk site events",          value: String(inc2.highRiskSiteEvents ?? "—"), source: "Sentinel", status: "VERIFIED" },
-      { area: "Governance",    metric: "CAPAs created (30d)",            value: String(capa2.created30d ?? "—"),        source: "Sentinel", status: "VERIFIED" },
-      { area: "Governance",    metric: "CAPAs overdue",                  value: String(capa2.overdue ?? "—"),           source: "Sentinel", status: "VERIFIED" },
-      { area: "Governance",    metric: "Avg automated response time",    value: String(auto.avgResponseTimeSec ?? "—"), source: "Sentinel", status: "CALCULATED" },
-    ].filter(r => r.value !== "—" && r.value !== "undefined" && r.value !== "null");
+      { area: "Environmental", metric: "Automated valve closures",       value: String(auto.valveClosures30d ?? "-"),   source: "Sentinel", status: "VERIFIED" },
+      { area: "Environmental", metric: "Litres saved (estimate)",        value: String(auto.litresSaved ?? "-"),        source: "Calculated", status: "ESTIMATED" },
+      { area: "Social",        metric: "Overfill events prevented",      value: String(inc2.overfillEvents30d ?? "-"),  source: "Sentinel", status: "VERIFIED" },
+      { area: "Social",        metric: "High-risk site events",          value: String(inc2.highRiskSiteEvents ?? "-"), source: "Sentinel", status: "VERIFIED" },
+      { area: "Governance",    metric: "CAPAs created (30d)",            value: String(capa2.created30d ?? "-"),        source: "Sentinel", status: "VERIFIED" },
+      { area: "Governance",    metric: "CAPAs overdue",                  value: String(capa2.overdue ?? "-"),           source: "Sentinel", status: "VERIFIED" },
+      { area: "Governance",    metric: "Avg automated response time",    value: String(auto.avgResponseTimeSec ?? "-"), source: "Sentinel", status: "CALCULATED" },
+    ].filter(r => r.value !== "-" && r.value !== "undefined" && r.value !== "null");
     esgRows.push(...fallbackRows);
   }
 
@@ -1043,7 +1444,7 @@ export async function downloadHseReportPdf(
   disclaimerBox(s,
     "IMPORTANT: This report was generated by Sentinel AI. It supports HSE decision-making " +
     "and does not replace professional HSE judgment. The workflow is: " +
-    "Detect → Analyze → Draft → Review → Verify → Approve → Report. " +
+    "Detect > Analyze > Draft > Review > Verify > Approve > Report. " +
     "This is the DRAFT stage. An HSE professional must review and approve before external use."
   );
 
@@ -1054,7 +1455,7 @@ export async function downloadHseReportPdf(
     s.doc.setFontSize(7);
     s.doc.setTextColor(...COLORS.light);
     s.doc.text(`Page ${i} of ${totalPages}`, PAGE_W - MARGIN - 16, PAGE_H - 8);
-    s.doc.text(`SENTINEL AI — ${reportType.toUpperCase()} — ${generatedAt} — CONFIDENTIAL DRAFT`, MARGIN, PAGE_H - 8);
+    s.doc.text(`SENTINEL AI - ${reportType.toUpperCase()} - ${generatedAt} - CONFIDENTIAL DRAFT`, MARGIN, PAGE_H - 8);
   }
 
   // ── Save ────────────────────────────────────────────────────────────────────

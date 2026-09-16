@@ -72,35 +72,28 @@ public class HseReportController {
         }
         var alert = alertOpt.get();
 
-        // Find the most recent event for this site
+        // Try to find a recent event for this site first (preferred — more data)
         var events = eventRepository.findBySiteIdAndCreatedAtAfterOrderByCreatedAtDesc(
             alert.getSiteId(),
-            java.time.LocalDateTime.now().minusDays(7)
+            java.time.LocalDateTime.now().minusDays(90)
         );
 
-        if (events.isEmpty()) {
-            // No event found — create a synthetic event context using alert data
-            // Try to find any event for this site ever
-            var anyEvents = eventRepository.findBySiteIdAndCreatedAtAfterOrderByCreatedAtDesc(
-                alert.getSiteId(),
-                java.time.LocalDateTime.now().minusDays(90)
-            );
-            if (anyEvents.isEmpty()) {
-                return ResponseEntity.notFound().build();
-            }
+        if (!events.isEmpty()) {
             try {
-                HseReportEntity report = hseReportService.generateReport(anyEvents.get(0).getEventId());
+                HseReportEntity report = hseReportService.generateReport(events.get(0).getEventId());
                 return ResponseEntity.ok(report);
             } catch (IllegalArgumentException ex) {
-                return ResponseEntity.notFound().build();
+                log.warn("HseReportController: event-based generation failed for alertId={}, falling back to alert-based", alertId);
             }
         }
 
+        // No events found — generate directly from alert data
         try {
-            HseReportEntity report = hseReportService.generateReport(events.get(0).getEventId());
+            HseReportEntity report = hseReportService.generateFromAlert(alert);
             return ResponseEntity.ok(report);
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.notFound().build();
+        } catch (Exception ex) {
+            log.error("HseReportController: alert-based generation failed for alertId={}: {}", alertId, ex.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 
