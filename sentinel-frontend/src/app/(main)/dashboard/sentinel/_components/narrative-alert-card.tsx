@@ -7,19 +7,25 @@ import {
   AlertTriangle,
   Bell,
   BookOpen,
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
   FileText,
+  Leaf,
+  Loader2,
   MapPin,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   Siren,
+  Users,
   Zap,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Alert, SeverityBand } from "@/lib/sentinel/types";
 import { cn } from "@/lib/utils";
 
@@ -176,6 +182,315 @@ function parseNarrativeSegments(
       text: isAnchor ? segment.slice(1).trim() : segment,
     };
   });
+}
+
+// ─── AI HSE Analysis Panel ────────────────────────────────────────────────
+// Embedded directly in the alert — no separate page needed.
+// One button generates the full AI analysis and shows it inline.
+
+interface ReportContent {
+  executiveSummary?: {
+    whatHappened?: string;
+    severity?: string;
+    immediateRisk?: string;
+    sentinelResponse?: string;
+    responseTimeSeconds?: number;
+    currentStatus?: string;
+    keyActions?: string[];
+  };
+  hseRiskAssessment?: {
+    healthAndSafety?: string;
+    environmental?: string;
+    community?: string;
+    legalAndCompliance?: string;
+  };
+  rootCauseAnalysis?: {
+    disclaimer?: string;
+    confirmedFacts?: string[];
+    aiHypotheses?: string[];
+  };
+  capaRecommendations?: Array<{
+    action?: string;
+    priority?: string;
+    responsibleRole?: string;
+    suggestedDeadlineDays?: number;
+    verificationMethod?: string;
+  }>;
+  esgConnection?: {
+    environmental?: string[];
+    social?: string[];
+    governance?: string[];
+  };
+  managementInsights?: string[];
+}
+
+function AiAnalysisPanel({ alertId }: { alertId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [report, setReport] = useState<ReportContent | null>(null);
+  const [section, setSection] = useState<"summary" | "risk" | "rca" | "capa" | "esg">("summary");
+
+  async function generate() {
+    setState("loading");
+    try {
+      const res = await fetch(`/api/proxy/hse-reports/generate-from-alert/${alertId}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const content: ReportContent = JSON.parse(data.reportJson ?? "{}");
+      setReport(content);
+      setState("done");
+    } catch {
+      setState("error");
+    }
+  }
+
+  // ── Idle state — just the button ─────────────────────────────────────────
+  if (state === "idle") {
+    return (
+      <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+        <button
+          type="button"
+          onClick={generate}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 dark:border-slate-700 py-2.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:border-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+        >
+          <Bot className="size-3.5" />
+          Ask AI — What happened and what do I do?
+        </button>
+      </div>
+    );
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (state === "loading") {
+    return (
+      <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+        <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          Sentinel AI is analysing the incident...
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (state === "error") {
+    return (
+      <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+        <p className="text-xs text-red-500 text-center py-2">
+          Could not generate analysis. Make sure the backend is running.{" "}
+          <button type="button" onClick={generate} className="underline">Retry</button>
+        </p>
+      </div>
+    );
+  }
+
+  if (!report) return null;
+
+  const exec = report.executiveSummary;
+  const risk = report.hseRiskAssessment;
+  const rca  = report.rootCauseAnalysis;
+  const capas = report.capaRecommendations ?? [];
+  const esg  = report.esgConnection;
+
+  const tabs = [
+    { key: "summary", label: "Summary",   icon: <FileText className="size-3" /> },
+    { key: "risk",    label: "Risk",      icon: <ShieldAlert className="size-3" /> },
+    { key: "rca",     label: "Root Cause",icon: <AlertTriangle className="size-3" /> },
+    { key: "capa",    label: "Actions",   icon: <CheckCircle2 className="size-3" /> },
+    { key: "esg",     label: "ESG",       icon: <Leaf className="size-3" /> },
+  ] as const;
+
+  return (
+    <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase text-violet-600 dark:text-violet-400">
+          <Bot className="size-3.5" />
+          Sentinel AI Analysis
+        </div>
+        <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+        <span className="text-[9px] text-slate-400 uppercase tracking-wider">AI draft · requires HSE review</span>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-3 flex-wrap">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setSection(t.key)}
+            className={cn(
+              "flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+              section === t.key
+                ? "bg-violet-600 text-white"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            )}
+          >
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Summary tab ── */}
+      {section === "summary" && exec && (
+        <div className="space-y-2">
+          <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+            {exec.whatHappened}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded bg-slate-50 dark:bg-slate-800 p-2">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Immediate Risk</p>
+              <p className="text-xs text-slate-700 dark:text-slate-300">{exec.immediateRisk}</p>
+            </div>
+            <div className="rounded bg-slate-50 dark:bg-slate-800 p-2">
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Sentinel Did</p>
+              <p className="text-xs text-slate-700 dark:text-slate-300">
+                {exec.sentinelResponse}
+                {exec.responseTimeSeconds ? ` (${exec.responseTimeSeconds}s)` : ""}
+              </p>
+            </div>
+          </div>
+          {exec.keyActions && exec.keyActions.length > 0 && (
+            <div className="rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-2">
+              <p className="text-[9px] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold mb-1.5">
+                Do This Now
+              </p>
+              <ul className="space-y-1">
+                {exec.keyActions.map((a, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                    <span className="mt-1 size-1 rounded-full bg-amber-500 flex-shrink-0" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Risk tab ── */}
+      {section === "risk" && risk && (
+        <div className="space-y-2">
+          {[
+            { label: "🦺 Health & Safety", value: risk.healthAndSafety },
+            { label: "🌿 Environmental",   value: risk.environmental },
+            { label: "👥 Community",       value: risk.community },
+            { label: "⚖️ Legal",           value: risk.legalAndCompliance },
+          ].map(({ label, value }) => value && (
+            <div key={label} className="border-l-2 border-slate-200 dark:border-slate-700 pl-2">
+              <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">{label}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Root cause tab ── */}
+      {section === "rca" && rca && (
+        <div className="space-y-2">
+          {rca.disclaimer && (
+            <div className="rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-2">
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 flex gap-1.5">
+                <Bot className="size-3 flex-shrink-0 mt-0.5" />
+                {rca.disclaimer}
+              </p>
+            </div>
+          )}
+          {rca.confirmedFacts && rca.confirmedFacts.length > 0 && (
+            <div>
+              <p className="text-[9px] uppercase tracking-wider font-semibold text-emerald-600 mb-1">Confirmed Facts</p>
+              {rca.confirmedFacts.map((f, i) => (
+                <p key={i} className="text-xs text-slate-600 dark:text-slate-400 flex gap-1.5 mb-0.5">
+                  <span className="mt-1 size-1.5 rounded-full bg-emerald-500 flex-shrink-0" />{f}
+                </p>
+              ))}
+            </div>
+          )}
+          {rca.aiHypotheses && rca.aiHypotheses.length > 0 && (
+            <div>
+              <p className="text-[9px] uppercase tracking-wider font-semibold text-blue-500 mb-1">AI Hypotheses</p>
+              {rca.aiHypotheses.map((h, i) => (
+                <p key={i} className="text-xs text-slate-600 dark:text-slate-400 flex gap-1.5 mb-0.5">
+                  <span className="mt-1 size-1.5 rounded-full bg-blue-400 flex-shrink-0" />{h}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CAPA tab ── */}
+      {section === "capa" && (
+        <div className="space-y-2">
+          {capas.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No CAPA recommendations generated.</p>
+          ) : capas.map((c, i) => {
+            const priorityColor = c.priority === "CRITICAL"
+              ? "text-red-600 dark:text-red-400"
+              : c.priority === "HIGH"
+                ? "text-orange-600 dark:text-orange-400"
+                : "text-amber-600 dark:text-amber-400";
+            return (
+              <div key={i} className="rounded bg-slate-50 dark:bg-slate-800 p-2 border-l-2 border-slate-300 dark:border-slate-600">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200">{c.action}</p>
+                  <span className={`text-[10px] font-bold flex-shrink-0 ${priorityColor}`}>{c.priority}</span>
+                </div>
+                <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+                  {c.responsibleRole && <span>👤 {c.responsibleRole}</span>}
+                  {c.suggestedDeadlineDays && <span>⏱ {c.suggestedDeadlineDays}d</span>}
+                  {c.verificationMethod && <span>✓ {c.verificationMethod}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── ESG tab ── */}
+      {section === "esg" && esg && (
+        <div className="grid grid-cols-1 gap-2">
+          {esg.environmental && esg.environmental.length > 0 && (
+            <div className="rounded bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-2">
+              <p className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Leaf className="size-3" /> E — Environmental
+              </p>
+              {esg.environmental.map((e, i) => (
+                <p key={i} className="text-xs text-emerald-800 dark:text-emerald-300 flex gap-1.5 mb-0.5">
+                  <span className="mt-1 size-1 rounded-full bg-emerald-500 flex-shrink-0" />{e}
+                </p>
+              ))}
+            </div>
+          )}
+          {esg.social && esg.social.length > 0 && (
+            <div className="rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-2">
+              <p className="text-[9px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Users className="size-3" /> S — Social
+              </p>
+              {esg.social.map((s, i) => (
+                <p key={i} className="text-xs text-blue-800 dark:text-blue-300 flex gap-1.5 mb-0.5">
+                  <span className="mt-1 size-1 rounded-full bg-blue-400 flex-shrink-0" />{s}
+                </p>
+              ))}
+            </div>
+          )}
+          {esg.governance && esg.governance.length > 0 && (
+            <div className="rounded bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 p-2">
+              <p className="text-[9px] font-bold text-violet-700 dark:text-violet-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <ShieldCheck className="size-3" /> G — Governance
+              </p>
+              {esg.governance.map((g, i) => (
+                <p key={i} className="text-xs text-violet-800 dark:text-violet-300 flex gap-1.5 mb-0.5">
+                  <span className="mt-1 size-1 rounded-full bg-violet-400 flex-shrink-0" />{g}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -392,6 +707,11 @@ export function NarrativeAlertCard({
           <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-2.5">
             {alert.description}
           </p>
+        )}
+
+        {/* ── AI Analysis Panel — embedded, no separate page needed ── */}
+        {(alert.severity === "Critical" || alert.severity === "High") && (
+          <AiAnalysisPanel alertId={alert.id} />
         )}
       </div>
     </div>

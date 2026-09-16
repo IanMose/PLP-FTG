@@ -26,3 +26,8 @@ target/
 
 ### Logs ###
 *.log
+
+### Local secrets — never commit ###
+.env
+.env.local
+src/main/resources/application-local.yml

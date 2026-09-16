@@ -36,7 +36,7 @@ public class AlertEntity {
     @Column(name = "rule")
     private String rule;
 
-    @Column(name = "record_ids")
+    @Column(name = "record_ids", columnDefinition = "TEXT")
     private String recordIds;
 
     @Column(name = "created_at", nullable = false)

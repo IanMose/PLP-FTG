@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: postgres
+    active: default
   application:
     name: sentinel-backend
 
@@ -18,6 +18,7 @@ spring:
       ddl-auto: create-drop
     show-sql: false
     open-in-view: false
+    defer-datasource-initialization: true
 
   defer-datasource-initialization: true
 
@@ -50,7 +51,7 @@ sentinel:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   jwt:
-    secret: ${JWT_SECRET:local-dev-secret-change-in-production-minimum-32-chars}
+    secret: ${JWT_SECRET:changeme-in-production}
     expiration-ms: 86400000 # 24 hours
   etl:
     enabled: ${ETL_ENABLED:true}
@@ -67,8 +68,8 @@ sentinel:
   # falls back to the templated narrative silently — no errors, no crashes.
   # Get a free key at https://console.groq.com
   llm:
-    groq-api-key: ${GROQ_API_KEY:}
-    model: llama-3.1-8b-instant
+    groq-api-key: ${GROQ_KEY:}
+    model: openai/gpt-oss-20b
     timeout-ms: 3000 # 3 second hard timeout — never block alert creation
     enabled: ${LLM_ENABLED:true}
 
@@ -80,6 +81,19 @@ sentinel:
     webhook-url: ${SLACK_WEBHOOK_URL:}
     enabled: ${SLACK_ENABLED:false}
     channel: ${SLACK_CHANNEL:#sentinel-alerts}
+
+  # ── SMS integration via Africa's Talking (Critical alerts) ────────────────
+  # Configure AT_API_KEY and AT_USERNAME to enable SMS notifications.
+  # Sign up at https://africastalking.com → Get API key from dashboard.
+  # SMS is sent only for Critical severity events (configurable via critical-only).
+  # Phone numbers must be in international format (+254... for Kenya).
+  sms:
+    api-url: ${AT_API_URL:https://api.africastalking.com/version1/messaging}
+    api-key: ${AT_API_KEY:}
+    username: ${AT_USERNAME:}
+    sender-id: ${AT_SENDER_ID:SENTINEL}  # Requires approval from AT for custom sender
+    enabled: ${SMS_ENABLED:false}
+    critical-only: ${SMS_CRITICAL_ONLY:true}  # Only send SMS for Critical severity
 
   # ── Dashboard URL for Slack message links ─────────────────────────────────
   dashboard:

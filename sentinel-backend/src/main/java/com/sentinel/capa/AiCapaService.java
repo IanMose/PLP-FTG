@@ -47,7 +47,7 @@ public class AiCapaService {
     @Value("${sentinel.llm.groq-api-key:}")
     private String groqApiKey;
 
-    @Value("${sentinel.llm.model:llama-3.1-8b-instant}")
+    @Value("${sentinel.llm.model:openai/gpt-oss-20b}")
     private String groqModel;
 
     @Value("${sentinel.llm.timeout-ms:3000}")
@@ -55,6 +55,13 @@ public class AiCapaService {
 
     @Value("${sentinel.llm.enabled:true}")
     private boolean llmEnabled;
+
+    /**
+     * Language toggle — "en" (English, default) or "sw" (Swahili).
+     * Toggled at runtime via POST /api/ai/language  { "language": "sw" }
+     */
+    @Value("${sentinel.llm.language:en}")
+    private String capaLanguage;
 
     private static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -243,7 +250,7 @@ public class AiCapaService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", groqModel);
         body.put("messages", List.of(
-            Map.of("role", "system", "content", CAPA_SYSTEM_PROMPT),
+            Map.of("role", "system", "content", withLanguage(CAPA_SYSTEM_PROMPT)),
             Map.of("role", "user", "content", context)
         ));
         body.put("max_tokens", 500);
@@ -324,6 +331,39 @@ public class AiCapaService {
     private String displayName(String siteId) {
         return SITE_DISPLAY_NAMES.getOrDefault(siteId,
             siteId != null ? siteId.toUpperCase() : "Unknown Site");
+    }
+
+    // ── Language toggle ───────────────────────────────────────────────────────
+
+    /**
+     * Appends a Swahili language instruction to the system prompt when active.
+     * CAPA JSON field names remain in English — only the prose values are translated.
+     */
+    private String withLanguage(String systemPrompt) {
+        if ("sw".equalsIgnoreCase(capaLanguage)) {
+            return systemPrompt +
+                " LUGHA: Andika maelezo yote kwa Kiswahili sanifu. " +
+                "Hifadhi majina ya maeneo, vitambulisho vya tukio, na marejeo ya kisheria kama yalivyo. " +
+                "Tafsiri maandishi tu, sio data. " +
+                "(LANGUAGE: Write all prose in standard Swahili. " +
+                "Preserve site names, event IDs, and legal references exactly. Translate prose only, not data.)";
+        }
+        return systemPrompt;
+    }
+
+    /**
+     * Runtime language toggle. Accepts "en" or "sw".
+     * Called by POST /api/ai/language via AiChatController.
+     */
+    public void setLanguage(String language) {
+        if ("sw".equalsIgnoreCase(language) || "en".equalsIgnoreCase(language)) {
+            this.capaLanguage = language.toLowerCase();
+            log.info("AiCapaService: CAPA language set to '{}'", this.capaLanguage);
+        }
+    }
+
+    public String getLanguage() {
+        return capaLanguage;
     }
 
     // ── Response DTO ──────────────────────────────────────────────────────────

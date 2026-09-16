@@ -77,7 +77,7 @@ public class NarrativeService {
     @Value("${sentinel.llm.groq-api-key:}")
     private String groqApiKey;
 
-    @Value("${sentinel.llm.model:llama-3.1-8b-instant}")
+    @Value("${sentinel.llm.model:openai/gpt-oss-20b}")
     private String groqModel;
 
     @Value("${sentinel.llm.timeout-ms:3000}")
@@ -85,6 +85,15 @@ public class NarrativeService {
 
     @Value("${sentinel.llm.enabled:true}")
     private boolean llmEnabled;
+
+    /**
+     * Language toggle — set to "sw" to generate narratives in Swahili (Kiswahili).
+     * Default is "en" (English). Override via application-local.yml:
+     *   sentinel.llm.language: sw
+     * Or at runtime via POST /api/ai/language  { "language": "sw" }
+     */
+    @Value("${sentinel.llm.language:en}")
+    private String narrativeLanguage;
 
     private static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -572,6 +581,9 @@ public class NarrativeService {
             factory.setReadTimeout(groqTimeoutMs);
             restTemplate.setRequestFactory(factory);
 
+            // Inject language instruction into system prompt
+            String effectiveSystemPrompt = withLanguage(systemPrompt);
+
             // Build request body — OpenAI-compatible chat completions format
             Map<String, Object> userMessage = Map.of(
                 "role", "user",
@@ -579,7 +591,7 @@ public class NarrativeService {
             );
             Map<String, Object> systemMessage = Map.of(
                 "role", "system",
-                "content", systemPrompt
+                "content", effectiveSystemPrompt
             );
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", groqModel);
@@ -683,5 +695,44 @@ public class NarrativeService {
             log.debug("NarrativeService: could not query previous overfill count for site={}", siteId);
             return 0L;
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Language toggle — Swahili support
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Appends a language instruction to the system prompt when Swahili is active.
+     * Llama 3.1 supports Swahili natively — the instruction overrides the response language
+     * while keeping all safety-critical facts (numbers, IDs, site names) intact.
+     */
+    private String withLanguage(String systemPrompt) {
+        if ("sw".equalsIgnoreCase(narrativeLanguage)) {
+            return systemPrompt +
+                " LUGHA: Jibu kwa Kiswahili sanifu. Hifadhi nambari zote, majina ya maeneo, " +
+                "vitambulisho vya matukio, na marejeo ya kisheria kama yalivyotolewa — " +
+                "tafsiri maelezo tu, sio data. " +
+                "(LANGUAGE: Respond in standard Swahili. Preserve all numbers, site names, " +
+                "event IDs, and legal references exactly as given — translate the prose only, not the data.)";
+        }
+        return systemPrompt;
+    }
+
+    /**
+     * Runtime language toggle — called by POST /api/ai/language.
+     * Accepts "en" (English, default) or "sw" (Swahili).
+     */
+    public void setLanguage(String language) {
+        if ("sw".equalsIgnoreCase(language) || "en".equalsIgnoreCase(language)) {
+            this.narrativeLanguage = language.toLowerCase();
+            log.info("NarrativeService: narrative language set to '{}'", this.narrativeLanguage);
+        } else {
+            log.warn("NarrativeService: unsupported language '{}' — must be 'en' or 'sw'", language);
+        }
+    }
+
+    /** Returns the currently active narrative language code. */
+    public String getLanguage() {
+        return narrativeLanguage;
     }
 }
