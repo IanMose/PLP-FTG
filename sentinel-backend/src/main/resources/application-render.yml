@@ -59,6 +59,7 @@ spring:
 sentinel:
   etl:
     enabled: false
+    api-key: ${ETL_API_KEY:}
   # Enable Kafka on Render once KAFKA_* secrets are set in the dashboard.
   kafka:
     enabled: ${KAFKA_ENABLED:false}
